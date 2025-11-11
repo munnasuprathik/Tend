@@ -754,12 +754,10 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
             <MessageHistory email={user.email} />
           </TabsContent>
 
-          <TabsContent value="personalities" className="space-y-6">
+          <TabsContent value="settings" className="space-y-6">
             <PersonalityManager user={user} onUpdate={onUserUpdate} />
             <ScheduleManager user={user} onUpdate={onUserUpdate} />
-          </TabsContent>
-
-          <TabsContent value="settings" className="space-y-6">
+            
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
