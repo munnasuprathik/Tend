@@ -523,13 +523,10 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
       const updates = {
         name: formData.name,
         goals: formData.goals,
-        personality: {
-          type: formData.personalityType,
-          value: formData.personalityValue
-        },
         schedule: {
+          ...user.schedule,
           frequency: formData.frequency,
-          time: formData.time
+          times: [formData.time]
         },
         active: formData.active
       };
