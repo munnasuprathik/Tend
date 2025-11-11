@@ -762,8 +762,8 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle>Your Settings</CardTitle>
-                    <CardDescription>Manage your inspiration preferences</CardDescription>
+                    <CardTitle>Basic Information</CardTitle>
+                    <CardDescription>Update your name and goals</CardDescription>
                   </div>
                   {!editMode && (
                     <Button onClick={() => setEditMode(true)} data-testid="edit-settings-btn">
@@ -792,37 +792,6 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
                     disabled={!editMode}
                     className="mt-2 min-h-32"
                   />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Frequency</Label>
-                    <Select 
-                      value={formData.frequency} 
-                      onValueChange={(value) => setFormData({...formData, frequency: value})}
-                      disabled={!editMode}
-                    >
-                      <SelectTrigger className="mt-2">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="daily">Daily</SelectItem>
-                        <SelectItem value="weekly">Weekly</SelectItem>
-                        <SelectItem value="monthly">Monthly</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label>Time</Label>
-                    <Input
-                      type="time"
-                      value={formData.time}
-                      onChange={(e) => setFormData({...formData, time: e.target.value})}
-                      disabled={!editMode}
-                      className="mt-2"
-                    />
-                  </div>
                 </div>
 
                 <div className="flex items-center justify-between pt-4 border-t">
