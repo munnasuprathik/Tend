@@ -1024,6 +1024,69 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+async def schedule_user_emails():
+    """Schedule emails for all active users based on their preferences"""
+    try:
+        users = await db.users.find({"active": True}, {"_id": 0}).to_list(1000)
+        
+        for user_data in users:
+            try:
+                schedule = user_data.get('schedule', {})
+                if schedule.get('paused', False):
+                    continue
+                
+                email = user_data['email']
+                times = schedule.get('times', ['09:00'])
+                frequency = schedule.get('frequency', 'daily')
+                
+                # Parse time
+                time_parts = times[0].split(':')
+                hour = int(time_parts[0])
+                minute = int(time_parts[1])
+                
+                # Create job ID
+                job_id = f"user_{email.replace('@', '_at_').replace('.', '_')}"
+                
+                # Remove existing job if any
+                try:
+                    scheduler.remove_job(job_id)
+                except:
+                    pass
+                
+                # Add new job based on frequency
+                if frequency == 'daily':
+                    scheduler.add_job(
+                        send_scheduled_motivations,
+                        CronTrigger(hour=hour, minute=minute),
+                        id=job_id,
+                        replace_existing=True
+                    )
+                elif frequency == 'weekly':
+                    # Default to Monday if no days specified
+                    day_of_week = 0  # Monday
+                    scheduler.add_job(
+                        send_scheduled_motivations,
+                        CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute),
+                        id=job_id,
+                        replace_existing=True
+                    )
+                elif frequency == 'monthly':
+                    # First day of month
+                    scheduler.add_job(
+                        send_scheduled_motivations,
+                        CronTrigger(day=1, hour=hour, minute=minute),
+                        id=job_id,
+                        replace_existing=True
+                    )
+                
+                logger.info(f"Scheduled emails for {email} at {hour}:{minute} ({frequency})")
+                
+            except Exception as e:
+                logger.error(f"Error scheduling for {user_data.get('email', 'unknown')}: {str(e)}")
+    
+    except Exception as e:
+        logger.error(f"Error in schedule_user_emails: {str(e)}")
+
 @app.on_event("startup")
 async def startup_event():
     # Create database indexes for performance
@@ -1038,14 +1101,12 @@ async def startup_event():
         logger.warning(f"Index creation warning: {e}")
     
     # Start scheduler
-    scheduler.add_job(
-        send_scheduled_motivations,
-        CronTrigger(hour=9, minute=0),
-        id='daily_motivation',
-        replace_existing=True
-    )
     scheduler.start()
     logger.info("Scheduler started")
+    
+    # Schedule emails for all users
+    await schedule_user_emails()
+    logger.info("User email schedules initialized")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
