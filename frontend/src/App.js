@@ -240,7 +240,7 @@ function OnboardingScreen({ email, onComplete }) {
       const schedule = {
         frequency: formData.frequency,
         times: [formData.time],
-        timezone: "UTC",
+        timezone: formData.timezone,
         paused: false,
         skip_next: false
       };
