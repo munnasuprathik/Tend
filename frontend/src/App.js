@@ -443,11 +443,22 @@ function OnboardingScreen({ email, onComplete }) {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="sequential">Sequential</SelectItem>
-                        <SelectItem value="random">Random</SelectItem>
-                        <SelectItem value="daily_fixed">Daily Fixed</SelectItem>
+                        <SelectItem value="sequential">🔄 Sequential</SelectItem>
+                        <SelectItem value="random">🎲 Random</SelectItem>
+                        <SelectItem value="daily_fixed">📅 Daily Fixed</SelectItem>
+                        <SelectItem value="weekly_rotation">📆 Weekly Rotation</SelectItem>
+                        <SelectItem value="time_based">⏰ Time Based</SelectItem>
+                        <SelectItem value="favorite_weighted">⭐ Favorite Weighted</SelectItem>
                       </SelectContent>
                     </Select>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {formData.rotationMode === "sequential" && "Rotates in order"}
+                      {formData.rotationMode === "random" && "Random selection"}
+                      {formData.rotationMode === "daily_fixed" && "Fixed per weekday"}
+                      {formData.rotationMode === "weekly_rotation" && "Same all week"}
+                      {formData.rotationMode === "time_based" && "Morning/evening split"}
+                      {formData.rotationMode === "favorite_weighted" && "Based on ratings"}
+                    </p>
                   </div>
                 )}
 
