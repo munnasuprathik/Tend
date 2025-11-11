@@ -619,11 +619,26 @@ async def send_motivation_now(email: str):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
+    # Get current personality
+    personality = get_current_personality(user)
+    if not personality:
+        raise HTTPException(status_code=400, detail="No personality configured")
+    
     message = await generate_motivational_message(
         user['goals'],
-        PersonalityType(**user['personality']),
+        personality,
         user.get('name')
     )
+    
+    # Save to history
+    message_id = str(uuid.uuid4())
+    history = MessageHistory(
+        id=message_id,
+        email=email,
+        message=message,
+        personality=personality
+    )
+    await db.message_history.insert_one(history.model_dump())
     
     html_content = f"""
     <html>
