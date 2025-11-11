@@ -740,16 +740,6 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
                   />
                 </div>
 
-                <div>
-                  <Label>Inspiration Style</Label>
-                  <Input
-                    value={formData.personalityValue}
-                    onChange={(e) => setFormData({...formData, personalityValue: e.target.value})}
-                    disabled={!editMode}
-                    className="mt-2"
-                  />
-                </div>
-
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Frequency</Label>
