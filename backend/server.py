@@ -647,6 +647,37 @@ async def generate_message(request: MessageGenRequest):
     )
     return MessageGenResponse(message=message)
 
+@api_router.post("/test-schedule/{email}")
+async def test_schedule(email: str):
+    """Test if email scheduling is working for a user"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    schedule = user.get('schedule', {})
+    job_id = f"user_{email.replace('@', '_at_').replace('.', '_')}"
+    
+    # Check if job exists
+    job_exists = False
+    next_run = None
+    try:
+        job = scheduler.get_job(job_id)
+        if job:
+            job_exists = True
+            next_run = job.next_run_time.isoformat() if job.next_run_time else None
+    except:
+        pass
+    
+    return {
+        "email": email,
+        "schedule": schedule,
+        "job_exists": job_exists,
+        "job_id": job_id,
+        "next_run": next_run,
+        "active": user.get('active', False),
+        "paused": schedule.get('paused', False)
+    }
+
 @api_router.post("/send-now/{email}")
 async def send_motivation_now(email: str):
     """Send motivation email immediately"""
