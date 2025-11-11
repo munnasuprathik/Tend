@@ -154,7 +154,8 @@ function OnboardingScreen({ email, onComplete }) {
     },
     rotationMode: "sequential",
     frequency: "daily",
-    time: "09:00"
+    time: "09:00",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
   });
   const [loading, setLoading] = useState(false);
 
