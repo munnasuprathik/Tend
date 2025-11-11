@@ -181,32 +181,6 @@ export function PersonalityManager({ user, onUpdate }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Rotation Mode */}
-        <div className="p-4 bg-muted rounded-lg">
-          <Label className="mb-2 block">Rotation Mode</Label>
-          <Select value={user.rotation_mode} onValueChange={handleUpdateRotationMode} disabled={loading}>
-            <SelectTrigger data-testid="rotation-mode-select">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="sequential">🔄 Sequential</SelectItem>
-              <SelectItem value="random">🎲 Random</SelectItem>
-              <SelectItem value="daily_fixed">📅 Daily Fixed</SelectItem>
-              <SelectItem value="weekly_rotation">📆 Weekly Rotation</SelectItem>
-              <SelectItem value="time_based">⏰ Time Based</SelectItem>
-              <SelectItem value="favorite_weighted">⭐ Favorite Weighted</SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground mt-2">
-            {user.rotation_mode === "sequential" && "Rotates through personalities in order, one per message"}
-            {user.rotation_mode === "random" && "Picks a random personality for each message"}
-            {user.rotation_mode === "daily_fixed" && "Each day of week has fixed personality (Mon: 1st, Tue: 2nd, etc.)"}
-            {user.rotation_mode === "weekly_rotation" && "Same personality for entire week, rotates weekly"}
-            {user.rotation_mode === "time_based" && "Morning messages use first half, evening uses second half"}
-            {user.rotation_mode === "favorite_weighted" && "More messages from highly-rated personalities"}
-          </p>
-        </div>
-
         {/* Personality List */}
         <div className="space-y-2">
           {user.personalities.map((personality, index) => (
