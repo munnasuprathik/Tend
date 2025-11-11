@@ -86,7 +86,7 @@ class OnboardingRequest(BaseModel):
     name: str
     goals: str
     personalities: List[PersonalityType]
-    rotation_mode: Literal["sequential", "random", "daily_fixed"] = "sequential"
+    rotation_mode: Literal["sequential", "random", "daily_fixed", "weekly_rotation", "favorite_weighted", "time_based"] = "sequential"
     schedule: ScheduleConfig
 
 class UserProfileUpdate(BaseModel):
