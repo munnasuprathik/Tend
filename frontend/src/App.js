@@ -1090,10 +1090,23 @@ function AdminDashboard() {
                                 🎭 Personalities: {personalityDisplay}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                📅 Schedule: {schedule.frequency || 'Not set'} at {schedule.times?.[0] || 'N/A'} ({schedule.timezone || 'UTC'})
+                                📅 Schedule: <span className="font-semibold text-indigo-600">{schedule.frequency || 'Not set'}</span> at <span className="font-semibold text-indigo-600">{schedule.times?.[0] || 'N/A'}</span>
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                🔥 Streak: {user.streak_count || 0} days • 
+                                🌍 Timezone: <span className="font-semibold text-blue-600">{schedule.timezone || 'UTC'}</span>
+                                {schedule.timezone && (
+                                  <span className="ml-2 text-xs text-gray-500">
+                                    (Local: {new Date().toLocaleTimeString('en-US', { 
+                                      timeZone: schedule.timezone, 
+                                      hour: '2-digit', 
+                                      minute: '2-digit',
+                                      hour12: true 
+                                    })})
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                🔥 Streak: <span className="font-semibold text-orange-600">{user.streak_count || 0} days</span> • 
                                 📧 Messages: {user.total_messages_received || 0}
                               </p>
                             </div>
