@@ -1056,26 +1056,32 @@ function AdminDashboard() {
               <CardContent>
                 <div className="space-y-4">
                   {filteredUsers.map((user) => {
-                    const personalities = user.personalities || [];
+                    // Defensive: Ensure personalities is an array with valid objects
+                    const personalities = Array.isArray(user.personalities) 
+                      ? user.personalities.filter(p => p && typeof p === 'object' && p.value)
+                      : [];
                     const schedule = user.schedule || {};
+                    
+                    // Get personality display string safely
+                    const personalityDisplay = personalities.length > 0 
+                      ? personalities.map(p => p.value || 'Unknown').join(', ') 
+                      : 'None';
                     
                     return (
                       <div key={user.id} className="p-4 border rounded-lg hover:bg-slate-50 transition">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
-                              <p className="font-semibold">{user.name}</p>
+                              <p className="font-semibold">{user.name || 'Unknown User'}</p>
                               <div className={`h-2 w-2 rounded-full ${user.active ? 'bg-green-500' : 'bg-gray-400'}`} />
                             </div>
                             <p className="text-sm text-muted-foreground">{user.email}</p>
                             <div className="mt-2 space-y-1">
                               <p className="text-xs text-muted-foreground">
-                                🎯 Goals: {user.goals?.substring(0, 60)}...
+                                🎯 Goals: {user.goals ? user.goals.substring(0, 60) + '...' : 'Not set'}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                🎭 Personalities: {personalities.length > 0 
-                                  ? personalities.map(p => p.value).join(', ') 
-                                  : 'None'}
+                                🎭 Personalities: {personalityDisplay}
                               </p>
                               <p className="text-xs text-muted-foreground">
                                 📅 Schedule: {schedule.frequency || 'Not set'} at {schedule.times?.[0] || 'N/A'} ({schedule.timezone || 'UTC'})
