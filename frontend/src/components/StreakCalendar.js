@@ -118,69 +118,90 @@ export function StreakCalendar({ streakCount = 0, totalMessages = 0, lastEmailSe
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Flame className="h-5 w-5 text-orange-500" />
-          Your Motivation Streak
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-2xl md:text-3xl font-bold">
+            Your Motivation Streak
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={goToPreviousMonth}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            {!isCurrentMonth() && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={goToCurrentMonth}
+              >
+                Today
+              </Button>
+            )}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={goToNextMonth}
+              disabled={isCurrentMonth()}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
-        {/* Stats */}
-        <div className="flex items-center gap-6 mb-6">
-          <div>
-            <div className="text-3xl font-bold text-orange-500">{streakCount}</div>
-            <div className="text-sm text-muted-foreground">day streak</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold">{totalMessages}</div>
-            <div className="text-sm text-muted-foreground">total messages</div>
-          </div>
+        {/* Month and Year */}
+        <div className="text-center mb-6">
+          <h3 className="text-xl font-semibold">{getMonthYear()}</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            {totalMessages} total messages received
+          </p>
         </div>
 
         {/* Calendar Grid */}
-        <div className="space-y-4">
-          {/* Month labels */}
-          <div className="flex gap-1 text-xs text-muted-foreground pl-6">
-            {getMonthLabels().map((month, i) => (
-              <div key={i} className="flex-1 text-left">{month}</div>
+        <div className="space-y-3">
+          {/* Day labels */}
+          <div className="grid grid-cols-7 gap-2 text-center text-xs font-medium text-muted-foreground">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+              <div key={day}>{day}</div>
             ))}
           </div>
 
-          {/* Grid */}
-          <div className="flex gap-1">
-            {/* Day labels */}
-            <div className="flex flex-col gap-1 justify-between text-xs text-muted-foreground pr-2">
-              {[1, 3, 5].map((day) => (
-                <div key={day} style={{ height: '14px', lineHeight: '14px' }}>
-                  {getDayLabel(day)}
-                </div>
-              ))}
-            </div>
-
-            {/* Weeks */}
-            <div className="flex gap-1 flex-1">
-              {calendarData.map((week, weekIndex) => (
-                <div key={weekIndex} className="flex flex-col gap-1">
-                  {week.map((day, dayIndex) => (
-                    <div
-                      key={dayIndex}
-                      className={`w-3 h-3 rounded-sm ${getLevelColor(day.level)} ${
-                        day.isToday ? 'ring-2 ring-blue-500' : ''
-                      } transition-colors hover:ring-2 hover:ring-gray-400 cursor-pointer`}
-                      title={`${day.date}${day.level > 0 ? ' - Message received' : ''}`}
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
+          {/* Weeks */}
+          <div className="space-y-2">
+            {calendarData.map((week, weekIndex) => (
+              <div key={weekIndex} className="grid grid-cols-7 gap-2">
+                {week.map((day, dayIndex) => (
+                  <div
+                    key={dayIndex}
+                    className="aspect-square flex items-center justify-center"
+                  >
+                    {!day.isEmpty ? (
+                      <div
+                        className={`w-full h-full rounded-md flex items-center justify-center text-xs font-medium ${getLevelColor(day.level)} ${
+                          day.isToday ? 'ring-2 ring-blue-500 ring-offset-1' : ''
+                        } ${day.level > 0 ? 'text-white' : 'text-gray-600'} transition-all hover:scale-110 cursor-pointer`}
+                        title={`${day.date}${day.level > 0 ? ' - Message received' : ' - No activity'}`}
+                      >
+                        {day.dayNum}
+                      </div>
+                    ) : (
+                      <div className="w-full h-full"></div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
           </div>
 
           {/* Legend */}
-          <div className="flex items-center gap-2 text-xs text-muted-foreground justify-end">
+          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground pt-4">
             <span>Less</span>
             {[0, 1, 2, 3, 4].map((level) => (
               <div
                 key={level}
-                className={`w-3 h-3 rounded-sm ${getLevelColor(level)}`}
+                className={`w-4 h-4 rounded ${getLevelColor(level)}`}
               />
             ))}
             <span>More</span>
@@ -188,13 +209,16 @@ export function StreakCalendar({ streakCount = 0, totalMessages = 0, lastEmailSe
         </div>
 
         {/* Motivation message */}
-        {streakCount > 0 && (
-          <div className="mt-4 p-3 bg-gradient-to-r from-orange-50 to-red-50 rounded-lg text-center">
-            <p className="text-sm font-medium">
-              {streakCount >= 30 && "🔥 Amazing! You're on fire! 30+ day streak!"}
-              {streakCount >= 14 && streakCount < 30 && "🎯 Great job! Two weeks strong!"}
-              {streakCount >= 7 && streakCount < 14 && "💪 One week down! Keep it up!"}
-              {streakCount > 0 && streakCount < 7 && "🌟 Great start! Keep the momentum going!"}
+        {streakCount > 0 && isCurrentMonth() && (
+          <div className="mt-6 p-4 bg-gradient-to-r from-orange-50 to-red-50 rounded-lg text-center">
+            <p className="text-lg font-bold text-orange-600 mb-1">
+              🔥 {streakCount} Day Streak!
+            </p>
+            <p className="text-sm text-gray-600">
+              {streakCount >= 30 && "Amazing! You're on fire! Keep going!"}
+              {streakCount >= 14 && streakCount < 30 && "Great job! Two weeks strong!"}
+              {streakCount >= 7 && streakCount < 14 && "One week down! Keep it up!"}
+              {streakCount > 0 && streakCount < 7 && "Great start! Keep the momentum going!"}
             </p>
           </div>
         )}
