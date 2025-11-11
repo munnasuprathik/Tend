@@ -93,7 +93,7 @@ class UserProfileUpdate(BaseModel):
     name: Optional[str] = None
     goals: Optional[str] = None
     personalities: Optional[List[PersonalityType]] = None
-    rotation_mode: Optional[Literal["sequential", "random", "daily_fixed"]] = None
+    rotation_mode: Optional[Literal["sequential", "random", "daily_fixed", "weekly_rotation", "favorite_weighted", "time_based"]] = None
     schedule: Optional[ScheduleConfig] = None
     active: Optional[bool] = None
 
