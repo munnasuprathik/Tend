@@ -83,94 +83,79 @@ export function StreakCalendar({ streakCount = 0, totalMessages = 0, lastEmailSe
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <CardTitle className="text-lg font-semibold">Your Motivation Streak</CardTitle>
-            {streakCount > 0 && (
-              <span className="text-sm font-medium text-orange-600">
-                🔥 {streakCount} day{streakCount > 1 ? 's' : ''}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={goToPreviousMonth}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-sm font-medium min-w-[120px] text-center">
-              {getMonthYear()}
-            </span>
-            {!isCurrentMonth() && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={goToCurrentMonth}
-              >
-                Today
-              </Button>
-            )}
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={goToNextMonth}
-              disabled={isCurrentMonth()}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+    <Card className="overflow-hidden bg-gradient-to-br from-white to-gray-50 shadow-sm">
+      <div className="p-6 space-y-5">
+        {/* Title */}
+        <div className="text-center">
+          <h2 className="text-xl font-bold text-gray-800">Your Motivation Streak</h2>
         </div>
-      </CardHeader>
-      <CardContent>
-        {/* Calendar Grid - GitHub Style - Full Width */}
-        <div className="space-y-2">
-          {/* Day labels and grid container */}
-          <div className="flex items-start gap-2">
-            {/* Day labels */}
-            <div className="flex flex-col gap-[2px] text-[9px] text-muted-foreground justify-around" style={{ height: '91px' }}>
-              <div>Mon</div>
-              <div>Wed</div>
-              <div>Fri</div>
-            </div>
-            
-            {/* Calendar weeks - Full width */}
-            <div className="flex gap-[2px] flex-1">
-              {calendarData.map((week, weekIndex) => (
-                <div key={weekIndex} className="flex flex-col gap-[2px] flex-1">
-                  {week.map((day, dayIndex) => (
-                    <div
-                      key={dayIndex}
-                      className={`w-full h-[11px] rounded-[2px] ${getLevelColor(day.level)} ${
-                        day.isToday ? 'ring-1 ring-blue-400 ring-offset-0' : ''
-                      } ${day.isEmpty ? 'opacity-0' : 'cursor-pointer transition-all hover:ring-1 hover:ring-gray-400'}`}
-                      title={day.isEmpty ? '' : `${day.date}${day.level > 0 ? ' - Message received' : ' - No activity'}`}
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
 
-          {/* Legend and stats */}
-          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-            <div className="font-medium">{totalMessages} messages</div>
-            <div className="flex items-center gap-1">
-              <span>Less</span>
-              {[0, 1, 2, 3, 4].map((level) => (
-                <div
-                  key={level}
-                  className={`w-[10px] h-[10px] rounded-[2px] ${getLevelColor(level)} border border-gray-200`}
-                />
-              ))}
-              <span>More</span>
-            </div>
-          </div>
+        {/* Month Navigation */}
+        <div className="flex items-center justify-center gap-3">
+          <button
+            onClick={goToPreviousMonth}
+            className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+            aria-label="Previous month"
+          >
+            <ChevronLeft className="h-5 w-5 text-gray-600" />
+          </button>
+          <span className="text-base font-semibold text-gray-700 min-w-[160px] text-center">
+            {getMonthYear()}
+          </span>
+          <button
+            onClick={goToNextMonth}
+            disabled={isCurrentMonth()}
+            className={`p-2 rounded-full transition-colors ${
+              isCurrentMonth() 
+                ? 'text-gray-300 cursor-not-allowed' 
+                : 'hover:bg-gray-100 text-gray-600'
+            }`}
+            aria-label="Next month"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
         </div>
-      </CardContent>
+
+        {/* Calendar Grid */}
+        <div className="flex flex-wrap gap-[6px] justify-center max-w-3xl mx-auto">
+          {calendarData.map((day, index) => (
+            <div
+              key={index}
+              className={`w-10 h-10 rounded-md flex items-center justify-center text-xs font-medium transition-all duration-200 cursor-pointer ${getLevelColor(day.level)} ${
+                day.isToday 
+                  ? 'ring-2 ring-blue-400 ring-offset-2 shadow-md scale-105' 
+                  : 'shadow-sm hover:shadow-md hover:scale-105'
+              }`}
+              title={`${day.date}${day.level > 0 ? ' - Message received' : ' - No activity'}`}
+            >
+              <span className={day.level > 0 ? 'text-white' : 'text-gray-500'}>
+                {day.dayNum}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Stats */}
+        <div className="text-center">
+          <p className="text-sm text-gray-600">
+            <span className="font-semibold text-gray-800">{totalMessages}</span> messages
+          </p>
+        </div>
+
+        {/* Color Legend */}
+        <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+          <span>Less</span>
+          <div className="flex gap-1">
+            {[0, 1, 2, 3, 4].map((level) => (
+              <div
+                key={level}
+                className={`w-4 h-4 rounded ${getLevelColor(level).split(' ')[0]}`}
+              />
+            ))}
+          </div>
+          <span>More</span>
+        </div>
+      </div>
     </Card>
   );
 }
