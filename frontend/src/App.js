@@ -330,73 +330,132 @@ function OnboardingScreen({ email, onComplete }) {
           <Card className="shadow-xl">
             <CardHeader>
               <CardTitle>Choose Your Inspiration Style</CardTitle>
-              <CardDescription>Who or what should inspire you?</CardDescription>
+              <CardDescription>Add one or more personalities to rotate through</CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSubmitPersonality} className="space-y-6">
-                <RadioGroup 
-                  value={formData.personalityType} 
-                  onValueChange={(value) => setFormData({...formData, personalityType: value, personalityValue: "", customPersonality: ""})}
-                >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="famous" id="famous" />
-                    <Label htmlFor="famous" className="font-normal cursor-pointer">Famous Personality</Label>
+              <div className="space-y-6">
+                {/* Added Personalities */}
+                {formData.personalities.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Your Personalities ({formData.personalities.length})</Label>
+                    {formData.personalities.map((p, i) => (
+                      <div key={i} className="flex items-center justify-between p-3 border rounded-lg">
+                        <span className="font-medium">{p.value}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setFormData({
+                            ...formData,
+                            personalities: formData.personalities.filter((_, idx) => idx !== i)
+                          })}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="tone" id="tone" />
-                    <Label htmlFor="tone" className="font-normal cursor-pointer">Tone/Style</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="custom" id="custom" />
-                    <Label htmlFor="custom" className="font-normal cursor-pointer">Custom Description</Label>
-                  </div>
-                </RadioGroup>
+                )}
 
-                {formData.personalityType === "famous" && (
-                  <div>
-                    <Label>Select a Personality</Label>
-                    <Select value={formData.personalityValue} onValueChange={(value) => setFormData({...formData, personalityValue: value})}>
-                      <SelectTrigger className="mt-2">
+                {/* Add New Personality */}
+                <div className="space-y-4 p-4 border-2 border-dashed rounded-lg">
+                  <Label>Add Personality</Label>
+                  <RadioGroup 
+                    value={formData.currentPersonality.type} 
+                    onValueChange={(value) => setFormData({
+                      ...formData, 
+                      currentPersonality: { type: value, value: "", customValue: "" }
+                    })}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="famous" id="famous" />
+                      <Label htmlFor="famous" className="font-normal cursor-pointer">Famous</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="tone" id="tone" />
+                      <Label htmlFor="tone" className="font-normal cursor-pointer">Tone</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="custom" id="custom" />
+                      <Label htmlFor="custom" className="font-normal cursor-pointer">Custom</Label>
+                    </div>
+                  </RadioGroup>
+
+                  {formData.currentPersonality.type === "famous" && (
+                    <Select 
+                      value={formData.currentPersonality.value} 
+                      onValueChange={(value) => setFormData({
+                        ...formData, 
+                        currentPersonality: {...formData.currentPersonality, value}
+                      })}
+                    >
+                      <SelectTrigger>
                         <SelectValue placeholder="Choose" />
                       </SelectTrigger>
                       <SelectContent>
                         {FAMOUS_PERSONALITIES.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                       </SelectContent>
                     </Select>
-                  </div>
-                )}
+                  )}
 
-                {formData.personalityType === "tone" && (
-                  <div>
-                    <Label>Select a Tone</Label>
-                    <Select value={formData.personalityValue} onValueChange={(value) => setFormData({...formData, personalityValue: value})}>
-                      <SelectTrigger className="mt-2">
+                  {formData.currentPersonality.type === "tone" && (
+                    <Select 
+                      value={formData.currentPersonality.value} 
+                      onValueChange={(value) => setFormData({
+                        ...formData, 
+                        currentPersonality: {...formData.currentPersonality, value}
+                      })}
+                    >
+                      <SelectTrigger>
                         <SelectValue placeholder="Choose" />
                       </SelectTrigger>
                       <SelectContent>
                         {TONE_OPTIONS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                       </SelectContent>
                     </Select>
-                  </div>
-                )}
+                  )}
 
-                {formData.personalityType === "custom" && (
-                  <div>
-                    <Label>Describe Your Style</Label>
+                  {formData.currentPersonality.type === "custom" && (
                     <Textarea
-                      placeholder="E.g., 'Short punchy messages with action items' or 'Like a wise mentor'"
-                      value={formData.customPersonality}
-                      onChange={(e) => setFormData({...formData, customPersonality: e.target.value})}
-                      className="mt-2 min-h-24"
+                      placeholder="Describe style..."
+                      value={formData.currentPersonality.customValue}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        currentPersonality: {...formData.currentPersonality, customValue: e.target.value}
+                      })}
+                      rows={3}
                     />
+                  )}
+
+                  <Button type="button" variant="outline" onClick={handleAddPersonality} className="w-full">
+                    Add This Personality
+                  </Button>
+                </div>
+
+                {/* Rotation Mode */}
+                {formData.personalities.length > 1 && (
+                  <div>
+                    <Label>Rotation Mode</Label>
+                    <Select 
+                      value={formData.rotationMode} 
+                      onValueChange={(value) => setFormData({...formData, rotationMode: value})}
+                    >
+                      <SelectTrigger className="mt-2">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="sequential">Sequential</SelectItem>
+                        <SelectItem value="random">Random</SelectItem>
+                        <SelectItem value="daily_fixed">Daily Fixed</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 )}
 
-                <div className="flex gap-3">
+                <div className="flex gap-3 pt-4">
                   <Button type="button" variant="outline" onClick={() => setStep(2)} className="flex-1">Back</Button>
-                  <Button type="submit" className="flex-1">Continue</Button>
+                  <Button onClick={handleSubmitPersonality} className="flex-1">Continue</Button>
                 </div>
-              </form>
+              </div>
             </CardContent>
           </Card>
         )}
