@@ -1444,6 +1444,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def create_email_job(user_email: str):
+    """Wrapper to properly execute async email sending from scheduler"""
+    async def send_email_wrapper():
+        await send_motivation_to_user(user_email)
+        
+        # Track system event
+        await tracker.log_system_event(
+            event_type="scheduled_email_sent",
+            event_category="scheduler",
+            details={"user_email": user_email},
+            status="success"
+        )
+    
+    # Run in new event loop
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(send_email_wrapper())
+        loop.close()
+    except Exception as e:
+        logger.error(f"Error in email job for {user_email}: {str(e)}")
+
 async def schedule_user_emails():
     """Schedule emails for all active users based on their preferences"""
     try:
@@ -1482,11 +1504,12 @@ async def schedule_user_emails():
                     pass
                 
                 # Add new job based on frequency with timezone
-                # FIXED: Now each job sends email ONLY to the specific user
+                # FIXED: Now properly executes async function from scheduler
                 if frequency == 'daily':
                     scheduler.add_job(
-                        lambda user_email=email: asyncio.create_task(send_motivation_to_user(user_email)),
+                        create_email_job,
                         CronTrigger(hour=hour, minute=minute, timezone=tz),
+                        args=[email],
                         id=job_id,
                         replace_existing=True
                     )
@@ -1494,21 +1517,31 @@ async def schedule_user_emails():
                     # Default to Monday if no days specified
                     day_of_week = 0  # Monday
                     scheduler.add_job(
-                        lambda user_email=email: asyncio.create_task(send_motivation_to_user(user_email)),
+                        create_email_job,
                         CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute, timezone=tz),
+                        args=[email],
                         id=job_id,
                         replace_existing=True
                     )
                 elif frequency == 'monthly':
                     # First day of month
                     scheduler.add_job(
-                        lambda user_email=email: asyncio.create_task(send_motivation_to_user(user_email)),
+                        create_email_job,
                         CronTrigger(day=1, hour=hour, minute=minute, timezone=tz),
+                        args=[email],
                         id=job_id,
                         replace_existing=True
                     )
                 
-                logger.info(f"Scheduled emails for {email} at {hour}:{minute:02d} {user_timezone} ({frequency})")
+                logger.info(f"✅ Scheduled emails for {email} at {hour}:{minute:02d} {user_timezone} ({frequency})")
+                
+                # Save schedule version history
+                await version_tracker.save_schedule_version(
+                    user_email=email,
+                    schedule_data=schedule,
+                    changed_by="system",
+                    change_reason="Schedule initialization"
+                )
                 
             except Exception as e:
                 logger.error(f"Error scheduling for {user_data.get('email', 'unknown')}: {str(e)}")
