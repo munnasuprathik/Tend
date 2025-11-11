@@ -140,7 +140,7 @@ catch (error) {
 
 ### API Response Time Test:
 ```bash
-time curl -X POST "https://inboxinspire.preview.emergentagent.com/api/auth/login" \
+time curl -X POST "https://aipep.preview.emergentagent.com/api/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com"}'
 

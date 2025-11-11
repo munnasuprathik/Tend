@@ -186,7 +186,7 @@ Users can describe their own preferred style
 
 ## 📊 Admin Access
 
-**URL:** `https://inboxinspire.preview.emergentagent.com/admin`
+**URL:** `https://aipep.preview.emergentagent.com/admin`
 
 **Admin Token:** `admin_secure_pass_2024`
 

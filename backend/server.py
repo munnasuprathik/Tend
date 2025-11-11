@@ -662,7 +662,7 @@ async def login(request: LoginRequest, background_tasks: BackgroundTasks):
         user_exists = False
     
     # Prepare magic link email
-    magic_link = f"https://inboxinspire.preview.emergentagent.com/?token={token}&email={request.email}"
+    magic_link = f"https://aipep.preview.emergentagent.com/?token={token}&email={request.email}"
     
     html_content = f"""
     <html>
