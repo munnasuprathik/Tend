@@ -683,6 +683,19 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
             </Card>
           </TabsContent>
 
+          <TabsContent value="analytics" className="space-y-6">
+            <AnalyticsDashboard email={user.email} />
+          </TabsContent>
+
+          <TabsContent value="history" className="space-y-6">
+            <MessageHistory email={user.email} />
+          </TabsContent>
+
+          <TabsContent value="personalities" className="space-y-6">
+            <PersonalityManager user={user} onUpdate={onUserUpdate} />
+            <ScheduleManager user={user} onUpdate={onUserUpdate} />
+          </TabsContent>
+
           <TabsContent value="settings" className="space-y-6">
             <Card>
               <CardHeader>
