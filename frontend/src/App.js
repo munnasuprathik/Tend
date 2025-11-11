@@ -727,6 +727,11 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
           </TabsContent>
 
           <TabsContent value="analytics" className="space-y-6">
+            <StreakCalendar 
+              streakCount={user.streak_count || 0}
+              totalMessages={user.total_messages_received || 0}
+              lastEmailSent={user.last_email_sent}
+            />
             <AnalyticsDashboard email={user.email} />
           </TabsContent>
 
