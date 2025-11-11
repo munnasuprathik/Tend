@@ -1,51 +1,81 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Flame } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export function StreakCalendar({ streakCount = 0, totalMessages = 0, lastEmailSent }) {
   const [calendarData, setCalendarData] = useState([]);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
 
   useEffect(() => {
     generateCalendarData();
-  }, [streakCount, totalMessages, lastEmailSent]);
+  }, [streakCount, totalMessages, lastEmailSent, currentMonth]);
 
   const generateCalendarData = () => {
-    const today = new Date();
-    const weeks = 12; // Show last 12 weeks
     const data = [];
-
-    for (let week = weeks - 1; week >= 0; week--) {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    
+    // Get first day of month and total days in month
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startDayOfWeek = firstDay.getDay(); // 0 = Sunday
+    
+    // Calculate total weeks needed
+    const totalCells = Math.ceil((daysInMonth + startDayOfWeek) / 7) * 7;
+    const weeks = totalCells / 7;
+    
+    const today = new Date();
+    
+    for (let week = 0; week < weeks; week++) {
       const weekData = [];
       for (let day = 0; day < 7; day++) {
-        const date = new Date(today);
-        date.setDate(date.getDate() - (week * 7 + (6 - day)));
+        const cellIndex = week * 7 + day;
+        const dayNum = cellIndex - startDayOfWeek + 1;
         
-        // Determine if this day had activity
-        let level = 0;
-        if (lastEmailSent) {
-          const lastSent = new Date(lastEmailSent);
-          const daysSince = Math.floor((today - date) / (1000 * 60 * 60 * 24));
+        if (dayNum < 1 || dayNum > daysInMonth) {
+          // Empty cell
+          weekData.push({
+            date: null,
+            level: -1,
+            dayOfWeek: day,
+            isToday: false,
+            isEmpty: true
+          });
+        } else {
+          const date = new Date(year, month, dayNum);
           
-          // If within streak count, mark as active
-          if (daysSince <= streakCount && daysSince >= 0) {
-            level = 4; // High activity
+          // Determine if this day had activity
+          let level = 0;
+          if (lastEmailSent) {
+            const lastSent = new Date(lastEmailSent);
+            const daysSince = Math.floor((today - date) / (1000 * 60 * 60 * 24));
+            
+            // If within streak count and not in future, mark as active
+            if (daysSince <= streakCount && daysSince >= 0 && date <= today) {
+              level = 4; // High activity
+            }
           }
+          
+          weekData.push({
+            date: date.toISOString().split('T')[0],
+            level,
+            dayOfWeek: day,
+            isToday: date.toDateString() === today.toDateString(),
+            isEmpty: false,
+            dayNum
+          });
         }
-
-        weekData.push({
-          date: date.toISOString().split('T')[0],
-          level,
-          dayOfWeek: day,
-          isToday: date.toDateString() === today.toDateString()
-        });
       }
       data.push(weekData);
     }
-
+    
     setCalendarData(data);
   };
 
   const getLevelColor = (level) => {
+    if (level === -1) return "bg-transparent"; // Empty cells
     if (level === 0) return "bg-gray-100";
     if (level === 1) return "bg-green-200";
     if (level === 2) return "bg-green-300";
@@ -58,17 +88,31 @@ export function StreakCalendar({ streakCount = 0, totalMessages = 0, lastEmailSe
     return days[dayIndex];
   };
 
-  const getMonthLabels = () => {
-    const months = [];
+  const goToPreviousMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  };
+
+  const goToNextMonth = () => {
     const today = new Date();
-    
-    for (let i = 2; i >= 0; i--) {
-      const date = new Date(today);
-      date.setMonth(date.getMonth() - i);
-      months.push(date.toLocaleString('default', { month: 'short' }));
+    const nextMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+    // Don't go beyond current month
+    if (nextMonth <= today) {
+      setCurrentMonth(nextMonth);
     }
-    
-    return months;
+  };
+
+  const goToCurrentMonth = () => {
+    setCurrentMonth(new Date());
+  };
+
+  const isCurrentMonth = () => {
+    const today = new Date();
+    return currentMonth.getMonth() === today.getMonth() && 
+           currentMonth.getFullYear() === today.getFullYear();
+  };
+
+  const getMonthYear = () => {
+    return currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' });
   };
 
   return (
