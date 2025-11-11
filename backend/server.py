@@ -125,6 +125,11 @@ class MessageFeedbackCreate(BaseModel):
     rating: int
     feedback_text: Optional[str] = None
 
+class UserSession(BaseModel):
+    user_id: str
+    session_token: str
+    expires_at: datetime
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 class MessageHistory(BaseModel):
     model_config = ConfigDict(extra="ignore")
     
