@@ -1192,7 +1192,170 @@ async def admin_update_user(email: str, updates: dict):
         {"$set": updates}
     )
     updated_user = await db.users.find_one({"email": email}, {"_id": 0})
+    
+    # Track admin update
+    await tracker.log_admin_activity(
+        action_type="user_updated",
+        admin_email="admin",
+        details={"target_user": email, "updates": updates}
+    )
+    
     return {"status": "success", "user": updated_user}
+
+# ============================================================================
+# REAL-TIME ANALYTICS & ACTIVITY TRACKING ENDPOINTS
+# ============================================================================
+
+@api_router.get("/analytics/realtime", dependencies=[Depends(verify_admin)])
+async def get_realtime_analytics(minutes: int = 5):
+    """Get real-time activity statistics for admin dashboard"""
+    stats = await tracker.get_realtime_stats(minutes=minutes)
+    return stats
+
+@api_router.get("/analytics/user-timeline/{email}", dependencies=[Depends(verify_admin)])
+async def get_user_timeline(email: str, limit: int = 100):
+    """Get complete activity timeline for a specific user"""
+    activities = await tracker.get_user_activity_timeline(email, limit)
+    return {"email": email, "activities": activities}
+
+@api_router.get("/analytics/activity-logs", dependencies=[Depends(verify_admin)])
+async def get_activity_logs(
+    limit: int = 100,
+    action_category: Optional[str] = None,
+    user_email: Optional[str] = None
+):
+    """Get filtered activity logs"""
+    query = {}
+    if action_category:
+        query["action_category"] = action_category
+    if user_email:
+        query["user_email"] = user_email
+    
+    logs = await db.activity_logs.find(query, {"_id": 0}).sort("timestamp", -1).limit(limit).to_list(limit)
+    return {"logs": logs, "total": len(logs)}
+
+@api_router.get("/analytics/system-events", dependencies=[Depends(verify_admin)])
+async def get_system_events(limit: int = 50):
+    """Get recent system events"""
+    events = await db.system_events.find({}, {"_id": 0}).sort("timestamp", -1).limit(limit).to_list(limit)
+    return {"events": events}
+
+@api_router.get("/analytics/api-performance", dependencies=[Depends(verify_admin)])
+async def get_api_performance(hours: int = 24):
+    """Get API performance metrics"""
+    from datetime import timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    
+    # Aggregate API stats
+    pipeline = [
+        {"$match": {"timestamp": {"$gte": cutoff}}},
+        {"$group": {
+            "_id": "$endpoint",
+            "total_calls": {"$sum": 1},
+            "avg_response_time": {"$avg": "$response_time_ms"},
+            "max_response_time": {"$max": "$response_time_ms"},
+            "min_response_time": {"$min": "$response_time_ms"},
+            "error_count": {
+                "$sum": {"$cond": [{"$gte": ["$status_code", 400]}, 1, 0]}
+            }
+        }},
+        {"$sort": {"total_calls": -1}},
+        {"$limit": 20}
+    ]
+    
+    stats = await db.api_analytics.aggregate(pipeline).to_list(20)
+    return {"api_stats": stats, "time_window_hours": hours}
+
+@api_router.get("/analytics/page-views", dependencies=[Depends(verify_admin)])
+async def get_page_views(limit: int = 100):
+    """Get recent page views"""
+    views = await db.page_views.find({}, {"_id": 0}).sort("timestamp", -1).limit(limit).to_list(limit)
+    return {"page_views": views}
+
+@api_router.get("/analytics/active-sessions", dependencies=[Depends(verify_admin)])
+async def get_active_sessions():
+    """Get currently active user sessions"""
+    from datetime import timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
+    
+    sessions = await db.user_sessions.find(
+        {
+            "session_start": {"$gte": cutoff},
+            "$or": [
+                {"session_end": None},
+                {"session_end": {"$gte": cutoff}}
+            ]
+        },
+        {"_id": 0}
+    ).to_list(1000)
+    
+    return {"active_sessions": sessions, "count": len(sessions)}
+
+@api_router.post("/tracking/page-view")
+async def track_page_view(
+    page_url: str,
+    user_email: Optional[str] = None,
+    referrer: Optional[str] = None,
+    session_id: Optional[str] = None,
+    time_on_page: Optional[int] = None
+):
+    """Track frontend page views"""
+    view_id = await tracker.log_page_view(
+        page_url=page_url,
+        user_email=user_email,
+        referrer=referrer,
+        session_id=session_id,
+        time_on_page_seconds=time_on_page
+    )
+    return {"status": "tracked", "view_id": view_id}
+
+@api_router.post("/tracking/user-action")
+async def track_user_action(
+    action_type: str,
+    user_email: Optional[str] = None,
+    details: Optional[Dict] = None,
+    session_id: Optional[str] = None,
+    request: Request = None
+):
+    """Track any custom user action from frontend"""
+    ip_address = request.client.host if request and request.client else None
+    user_agent = request.headers.get("user-agent") if request else None
+    
+    activity_id = await tracker.log_user_activity(
+        action_type=action_type,
+        user_email=user_email,
+        details=details or {},
+        ip_address=ip_address,
+        user_agent=user_agent,
+        session_id=session_id
+    )
+    return {"status": "tracked", "activity_id": activity_id}
+
+@api_router.post("/tracking/session/start")
+async def start_tracking_session(
+    user_email: Optional[str] = None,
+    request: Request = None
+):
+    """Start a new tracking session"""
+    ip_address = request.client.host if request and request.client else None
+    user_agent = request.headers.get("user-agent") if request else None
+    
+    session_id = await tracker.start_session(
+        user_email=user_email,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+    return {"session_id": session_id}
+
+@api_router.put("/tracking/session/{session_id}")
+async def update_tracking_session(
+    session_id: str,
+    actions: int = 0,
+    pages: int = 0
+):
+    """Update session statistics"""
+    await tracker.update_session(session_id, actions=actions, pages=pages)
+    return {"status": "updated", "session_id": session_id}
 
 # Activity Tracking Middleware
 @app.middleware("http")
