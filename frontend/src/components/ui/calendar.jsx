@@ -1,71 +1,145 @@
-import * as React from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
-import { DayPicker } from "react-day-picker"
+import * as React from "react";
+import {
+  addDays,
+  addMonths,
+  eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameDay,
+  isSameMonth,
+  startOfMonth,
+  startOfWeek,
+  subMonths,
+} from "date-fns";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
-import { cn } from "@/lib/utils"
-import { buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils";
+import { buttonVariants } from "@/components/ui/button";
+
+const WEEKDAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
 function Calendar({
   className,
-  classNames,
-  showOutsideDays = true,
-  ...props
+  selected,
+  onSelect,
+  disableOutsideDays = false,
+  minDate,
+  maxDate,
 }) {
+  const initialMonth = React.useMemo(() => {
+    if (selected instanceof Date) return selected;
+    return new Date();
+  }, [selected]);
+
+  const [currentMonth, setCurrentMonth] = React.useState(startOfMonth(initialMonth));
+
+  React.useEffect(() => {
+    if (selected instanceof Date && !isSameMonth(selected, currentMonth)) {
+      setCurrentMonth(startOfMonth(selected));
+    }
+  }, [selected, currentMonth]);
+
+  const goToPreviousMonth = () => {
+    const previous = startOfMonth(subMonths(currentMonth, 1));
+    if (minDate && previous < startOfMonth(minDate)) return;
+    setCurrentMonth(previous);
+  };
+
+  const goToNextMonth = () => {
+    const next = startOfMonth(addMonths(currentMonth, 1));
+    if (maxDate && next > startOfMonth(maxDate)) return;
+    setCurrentMonth(next);
+  };
+
+  const weeks = React.useMemo(() => {
+    const start = startOfWeek(startOfMonth(currentMonth));
+    const end = endOfWeek(endOfMonth(currentMonth));
+    const days = eachDayOfInterval({ start, end });
+
+    const chunked = [];
+    for (let i = 0; i < days.length; i += 7) {
+      chunked.push(days.slice(i, i + 7));
+    }
+    return chunked;
+  }, [currentMonth]);
+
+  const isDayDisabled = (day) => {
+    if (disableOutsideDays && !isSameMonth(day, currentMonth)) return true;
+    if (minDate && day < startOfDay(minDate)) return true;
+    if (maxDate && day > startOfDay(maxDate)) return true;
+    return false;
+  };
+
   return (
-    <DayPicker
-      showOutsideDays={showOutsideDays}
-      className={cn("p-3", className)}
-      classNames={{
-        months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
-        month: "space-y-4",
-        caption: "flex justify-center pt-1 relative items-center",
-        caption_label: "text-sm font-medium",
-        nav: "space-x-1 flex items-center",
-        nav_button: cn(
-          buttonVariants({ variant: "outline" }),
-          "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
-        ),
-        nav_button_previous: "absolute left-1",
-        nav_button_next: "absolute right-1",
-        table: "w-full border-collapse space-y-1",
-        head_row: "flex",
-        head_cell:
-          "text-muted-foreground rounded-md w-8 font-normal text-[0.8rem]",
-        row: "flex w-full mt-2",
-        cell: cn(
-          "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-accent [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected].day-range-end)]:rounded-r-md",
-          props.mode === "range"
-            ? "[&:has(>.day-range-end)]:rounded-r-md [&:has(>.day-range-start)]:rounded-l-md first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md"
-            : "[&:has([aria-selected])]:rounded-md"
-        ),
-        day: cn(
-          buttonVariants({ variant: "ghost" }),
-          "h-8 w-8 p-0 font-normal aria-selected:opacity-100"
-        ),
-        day_range_start: "day-range-start",
-        day_range_end: "day-range-end",
-        day_selected:
-          "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
-        day_today: "bg-accent text-accent-foreground",
-        day_outside:
-          "day-outside text-muted-foreground aria-selected:bg-accent/50 aria-selected:text-muted-foreground",
-        day_disabled: "text-muted-foreground opacity-50",
-        day_range_middle:
-          "aria-selected:bg-accent aria-selected:text-accent-foreground",
-        day_hidden: "invisible",
-        ...classNames,
-      }}
-      components={{
-        IconLeft: ({ className, ...props }) => (
-          <ChevronLeft className={cn("h-4 w-4", className)} {...props} />
-        ),
-        IconRight: ({ className, ...props }) => (
-          <ChevronRight className={cn("h-4 w-4", className)} {...props} />
-        ),
-      }}
-      {...props} />
+    <div className={cn("w-full max-w-sm p-4", className)}>
+      <div className="flex items-center justify-between mb-4">
+        <button
+          type="button"
+          onClick={goToPreviousMonth}
+          className={cn(buttonVariants({ variant: "outline" }), "h-8 w-8 p-0")}
+          aria-label="Previous month"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <div className="text-sm font-medium">
+          {format(currentMonth, "MMMM yyyy")}
+        </div>
+        <button
+          type="button"
+          onClick={goToNextMonth}
+          className={cn(buttonVariants({ variant: "outline" }), "h-8 w-8 p-0")}
+          aria-label="Next month"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 text-xs font-medium text-muted-foreground mb-1">
+        {WEEKDAY_LABELS.map((day) => (
+          <div key={day} className="text-center">
+            {day}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 text-sm">
+        {weeks.map((week, idx) => (
+          <React.Fragment key={idx}>
+            {week.map((day) => {
+              const outsideMonth = !isSameMonth(day, currentMonth);
+              const disabled = isDayDisabled(day);
+              const isSelected = selected instanceof Date && isSameDay(day, selected);
+
+              return (
+                <button
+                  key={day.toISOString()}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onSelect?.(day)}
+                  className={cn(
+                    buttonVariants({ variant: "ghost" }),
+                    "h-8 w-full p-0 font-normal",
+                    outsideMonth && "text-muted-foreground opacity-60",
+                    disabled && "opacity-40 cursor-not-allowed",
+                    isSelected && "bg-primary text-primary-foreground hover:bg-primary"
+                  )}
+                >
+                  {format(day, "d")}
+                </button>
+              );
+            })}
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
   );
 }
-Calendar.displayName = "Calendar"
 
-export { Calendar }
+Calendar.displayName = "Calendar";
+
+function startOfDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+export { Calendar };

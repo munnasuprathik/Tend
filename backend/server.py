@@ -23,14 +23,42 @@ import pytz
 import time
 from activity_tracker import ActivityTracker
 from version_tracker import VersionTracker
+import warnings
+from contextlib import asynccontextmanager
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
+
+def get_env(key: str, default: Optional[str] = None) -> str:
+    """
+    Fetch an environment variable, optionally falling back to a provided default.
+
+    If no value is present and no default is given, a RuntimeError is raised with
+    guidance for local development.
+    """
+    value = os.getenv(key)
+    if value:
+        return value
+
+    if default is not None:
+        warnings.warn(
+            f"Environment variable '{key}' not set. Falling back to default value.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return default
+
+    raise RuntimeError(
+        f"Missing required environment variable '{key}'. "
+        "Set it in your shell or define it in backend/.env before starting the server."
+    )
+
+
 # MongoDB connection
-mongo_url = os.environ['MONGO_URL']
+mongo_url = get_env('MONGO_URL', 'mongodb://localhost:27017')
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db = client[get_env('DB_NAME', 'inbox_inspire')]
 
 # OpenAI client
 openai_client = AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
@@ -453,7 +481,7 @@ async def send_motivation_to_user(email: str):
             return
         
         # Update streak
-        await update_user_streak(email)
+        await update_streak(email)
         user_data = await db.users.find_one({"email": email}, {"_id": 0})  # Refresh to get updated streak
         
         # Get current personality
@@ -1774,28 +1802,31 @@ async def restore_deleted_data(deletion_id: str):
     else:
         raise HTTPException(status_code=404, detail="Cannot restore - data not found or already restored")
 
-@app.on_event("startup")
-async def startup_event():
-    # Create database indexes for performance
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     try:
-        await db.users.create_index("email", unique=True)
-        await db.pending_logins.create_index("email")
-        await db.message_history.create_index("email")
-        await db.message_feedback.create_index("email")
-        await db.email_logs.create_index([("email", 1), ("sent_at", -1)])
-        logger.info("Database indexes created")
-    except Exception as e:
-        logger.warning(f"Index creation warning: {e}")
-    
-    # Start scheduler
-    scheduler.start()
-    logger.info("Scheduler started")
-    
-    # Schedule emails for all users
-    await schedule_user_emails()
-    logger.info("User email schedules initialized")
+        try:
+            await db.users.create_index("email", unique=True)
+            await db.pending_logins.create_index("email")
+            await db.message_history.create_index("email")
+            await db.message_feedback.create_index("email")
+            await db.email_logs.create_index([("email", 1), ("sent_at", -1)])
+            logger.info("Database indexes created")
+        except Exception as e:
+            logger.warning(f"Index creation warning: {e}")
 
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    scheduler.shutdown()
-    client.close()
+        scheduler.start()
+        logger.info("Scheduler started")
+
+        await schedule_user_emails()
+        logger.info("User email schedules initialized")
+
+        yield
+    finally:
+        try:
+            scheduler.shutdown()
+        except Exception as e:
+            logger.warning(f"Scheduler shutdown warning: {e}")
+        client.close()
+
+app.router.lifespan_context = lifespan
