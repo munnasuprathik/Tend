@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, BackgroundTasks
+from fastapi import FastAPI, APIRouter, HTTPException, BackgroundTasks, Depends, Header
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -9,12 +9,14 @@ from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional, Literal
 import uuid
 from datetime import datetime, timezone
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+import aiosmtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from openai import AsyncOpenAI
 import asyncio
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+import secrets
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -23,6 +25,9 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+
+# OpenAI client
+openai_client = AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 # Create the main app without a prefix
 app = FastAPI()
@@ -36,32 +41,44 @@ scheduler = AsyncIOScheduler()
 # Define Models
 class PersonalityType(BaseModel):
     type: Literal["famous", "tone", "custom"]
-    value: str  # Name of person, tone type, or custom description
+    value: str
 
 class ScheduleConfig(BaseModel):
     frequency: Literal["daily", "weekly", "monthly", "custom"]
-    time: str = "09:00"  # HH:MM format
-    custom_days: Optional[List[str]] = None  # For custom: ["monday", "wednesday", "friday"]
-    custom_interval: Optional[int] = None  # For custom: every N days
+    time: str = "09:00"
+    custom_days: Optional[List[str]] = None
+    custom_interval: Optional[int] = None
 
 class UserProfile(BaseModel):
     model_config = ConfigDict(extra="ignore")
     
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     email: EmailStr
+    name: str
     goals: str
     personality: PersonalityType
     schedule: ScheduleConfig
+    magic_link_token: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     active: bool = True
+    last_email_sent: Optional[datetime] = None
 
-class UserProfileCreate(BaseModel):
+class LoginRequest(BaseModel):
     email: EmailStr
+
+class VerifyTokenRequest(BaseModel):
+    email: EmailStr
+    token: str
+
+class OnboardingRequest(BaseModel):
+    email: EmailStr
+    name: str
     goals: str
     personality: PersonalityType
     schedule: ScheduleConfig
 
 class UserProfileUpdate(BaseModel):
+    name: Optional[str] = None
     goals: Optional[str] = None
     personality: Optional[PersonalityType] = None
     schedule: Optional[ScheduleConfig] = None
@@ -70,64 +87,149 @@ class UserProfileUpdate(BaseModel):
 class MessageGenRequest(BaseModel):
     goals: str
     personality: PersonalityType
+    user_name: Optional[str] = None
 
 class MessageGenResponse(BaseModel):
     message: str
 
-class TestEmailRequest(BaseModel):
-    email: EmailStr
-    message: str
+class EmailLog(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    email: str
+    subject: str
+    status: str
+    error_message: Optional[str] = None
+    sent_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-# Email Service
-async def send_email(to_email: str, subject: str, html_content: str) -> bool:
+# Admin auth
+def verify_admin(authorization: str = Header(None)):
+    if not authorization or authorization != f"Bearer {os.getenv('ADMIN_SECRET')}":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    return True
+
+# SMTP Email Service
+async def send_email(to_email: str, subject: str, html_content: str) -> tuple[bool, Optional[str]]:
     try:
-        sg_key = os.getenv('SENDGRID_API_KEY')
-        if not sg_key or sg_key == 'your_sendgrid_key_here':
-            logging.warning(f"SendGrid not configured. Would send email to {to_email}")
-            return True  # Mock success for development
+        msg = MIMEMultipart('alternative')
+        msg['From'] = os.getenv('SENDER_EMAIL')
+        msg['To'] = to_email
+        msg['Subject'] = subject
         
-        message = Mail(
-            from_email=os.getenv('SENDER_EMAIL', 'noreply@inboxinspire.com'),
-            to_emails=to_email,
-            subject=subject,
-            html_content=html_content
+        html_part = MIMEText(html_content, 'html')
+        msg.attach(html_part)
+        
+        await aiosmtplib.send(
+            msg,
+            hostname=os.getenv('SMTP_HOST'),
+            port=int(os.getenv('SMTP_PORT')),
+            username=os.getenv('SMTP_USERNAME'),
+            password=os.getenv('SMTP_PASSWORD'),
+            use_tls=True
         )
         
-        sg = SendGridAPIClient(sg_key)
-        response = sg.send(message)
-        return response.status_code in [200, 202]
+        # Log successful email
+        log = EmailLog(
+            email=to_email,
+            subject=subject,
+            status="success"
+        )
+        await db.email_logs.insert_one(log.model_dump())
+        
+        return True, None
     except Exception as e:
-        logging.error(f"Email send error: {str(e)}")
-        return False
+        error_msg = str(e)
+        logging.error(f"Email send error: {error_msg}")
+        
+        # Log failed email
+        log = EmailLog(
+            email=to_email,
+            subject=subject,
+            status="failed",
+            error_message=error_msg
+        )
+        await db.email_logs.insert_one(log.model_dump())
+        
+        return False, error_msg
 
-# LLM Service for generating motivational messages
-async def generate_motivational_message(goals: str, personality: PersonalityType) -> str:
+# Enhanced LLM Service with deep personality matching
+async def generate_motivational_message(goals: str, personality: PersonalityType, user_name: Optional[str] = None) -> str:
     try:
-        llm_key = os.getenv('EMERGENT_LLM_KEY')
-        
-        # Build system message based on personality type
+        # Build detailed system message based on personality type
         if personality.type == "famous":
-            system_msg = f"You are {personality.value}, the famous inspirational figure. Write motivational messages in your distinctive style, tone, and philosophy. Reference your known quotes and wisdom when appropriate."
+            person = personality.value
+            system_msg = f"""You ARE {person}. You don't just mimic - you embody their complete essence.
+
+Your task: Write a personal motivational message as {person} would actually write it.
+
+Key requirements:
+- Use {person}'s EXACT speech patterns, vocabulary, and thought processes
+- Reference their life philosophy, famous quotes, and core beliefs naturally
+- Match their tone perfectly - whether visionary, philosophical, direct, warm, etc.
+- Include specific examples or metaphors they would use
+- Write as if {person} personally knows this person and cares about their journey
+- Keep it 2-3 powerful paragraphs
+- Make it feel like a personal letter, not a generic message
+
+Remember: You ARE {person}. Think like them. Write like them. Inspire like them."""
+        
         elif personality.type == "tone":
-            system_msg = f"You are a motivational message writer with a {personality.value} tone. Write engaging and inspiring messages that match this tone perfectly."
+            tone = personality.value
+            tone_instructions = {
+                "Funny & Uplifting": "Use humor, wit, and playful language. Include funny analogies. Make them smile while motivating. Be lighthearted but genuinely encouraging.",
+                "Friendly & Warm": "Write like a close friend who truly cares. Be warm, supportive, and understanding. Use conversational language. Be the friend they need.",
+                "Roasting (Tough Love)": "Be brutally honest but caring. Call out excuses. Challenge them directly. Use tough love - harsh but helpful. Make them uncomfortable enough to take action.",
+                "Serious & Direct": "Be straightforward and no-nonsense. Focus on facts and action steps. Be professional but motivating. Clear, concise, powerful.",
+                "Philosophical & Deep": "Use philosophical concepts, metaphors, and deep insights. Reference life's bigger picture. Be thought-provoking and contemplative.",
+                "Energetic & Enthusiastic": "HIGH ENERGY! Use exclamation points, power words, and excitement. Make them feel pumped up and ready to conquer the world!",
+                "Calm & Meditative": "Be peaceful, zen-like, and mindful. Use calming language. Focus on inner peace and steady progress. Be the voice of tranquility.",
+                "Poetic & Artistic": "Use beautiful imagery, metaphors, and poetic language. Paint pictures with words. Make it lyrical and inspiring."
+            }
+            
+            instruction = tone_instructions.get(tone, "Be motivating and match the requested tone perfectly.")
+            system_msg = f"""You are a master motivational writer with a {tone} style.
+
+{instruction}
+
+Write a deeply personal motivational message in 2-3 paragraphs. Make every word count. Match the {tone} tone PERFECTLY throughout."""
+        
         else:  # custom
-            system_msg = f"You are a motivational message writer. {personality.value}"
+            system_msg = f"""You are a personalized motivational message writer.
+
+User's specific requirements: {personality.value}
+
+Follow their requirements EXACTLY. Match the style, tone, and approach they described perfectly. Make it personal and deeply meaningful.
+
+Write 2-3 powerful paragraphs."""
         
-        chat = LlmChat(
-            api_key=llm_key,
-            session_id=str(uuid.uuid4()),
-            system_message=system_msg
-        ).with_model("openai", "gpt-4o-mini")
+        # Build personalized prompt
+        name_part = f" for {user_name}" if user_name else ""
+        prompt = f"""Write a motivational message{name_part} who is working on these goals:
+
+{goals}
+
+Make this message:
+- Deeply personal and specific to their goals
+- Actionable - give them something they can do TODAY
+- Genuine - like you truly care about their success
+- Memorable - something they'll want to re-read
+
+Write as if you're speaking directly to them, one-on-one."""
         
-        prompt = f"Write a short, powerful motivational message (2-3 paragraphs) for someone working on these goals: {goals}. Make it personal, actionable, and inspiring."
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.8,
+            max_tokens=500
+        )
         
-        user_message = UserMessage(text=prompt)
-        response = await chat.send_message(user_message)
-        
-        return response
+        return response.choices[0].message.content.strip()
     except Exception as e:
         logging.error(f"LLM generation error: {str(e)}")
-        return f"Keep pushing forward on your goals: {goals}. Every step counts!"
+        return f"Keep pushing forward on your goals. Every step counts!"
 
 # Background job to send scheduled emails
 async def send_scheduled_motivations():
@@ -139,35 +241,64 @@ async def send_scheduled_motivations():
                 # Generate message
                 message = await generate_motivational_message(
                     user_data['goals'],
-                    PersonalityType(**user_data['personality'])
+                    PersonalityType(**user_data['personality']),
+                    user_data.get('name')
                 )
                 
                 # Create HTML email
                 html_content = f"""
                 <html>
-                <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px; color: white;">
-                        <h1 style="margin: 0;">Your Daily Inspiration</h1>
-                    </div>
-                    <div style="padding: 30px; background: #f9f9f9; border-radius: 10px; margin-top: 20px;">
-                        <p style="font-size: 16px; line-height: 1.6; color: #333;">{message}</p>
-                    </div>
-                    <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
-                        <p>You're receiving this because you subscribed to InboxInspire</p>
+                <head>
+                    <style>
+                        body {{ font-family: 'Georgia', serif; line-height: 1.8; color: #333; }}
+                        .container {{ max-width: 600px; margin: 0 auto; }}
+                        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center; }}
+                        .header h1 {{ color: white; margin: 0; font-size: 28px; font-weight: 600; }}
+                        .content {{ background: #ffffff; padding: 40px 30px; }}
+                        .message {{ font-size: 16px; line-height: 1.8; color: #2d3748; white-space: pre-wrap; }}
+                        .signature {{ margin-top: 30px; padding-top: 20px; border-top: 2px solid #e2e8f0; font-style: italic; color: #718096; }}
+                        .footer {{ text-align: center; padding: 20px; color: #a0aec0; font-size: 12px; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h1>Your Daily Inspiration</h1>
+                        </div>
+                        <div class="content">
+                            <p style="font-size: 18px; color: #4a5568; margin-bottom: 25px;">Hello {user_data.get('name', 'there')},</p>
+                            <div class="message">{message}</div>
+                            <div class="signature">
+                                - Inspired by {user_data['personality']['value']}
+                            </div>
+                        </div>
+                        <div class="footer">
+                            <p>You're receiving this because you subscribed to InboxInspire</p>
+                            <p>Keep pushing towards your goals!</p>
+                        </div>
                     </div>
                 </body>
                 </html>
                 """
                 
-                await send_email(
+                success, error = await send_email(
                     user_data['email'],
-                    "Your Daily Motivation 🌟",
+                    f"Your Daily Motivation from {user_data['personality']['value']} ✨",
                     html_content
                 )
                 
-                logging.info(f"Sent motivation to {user_data['email']}")
+                if success:
+                    # Update last email sent time
+                    await db.users.update_one(
+                        {"email": user_data['email']},
+                        {"$set": {"last_email_sent": datetime.now(timezone.utc).isoformat()}}
+                    )
+                    logging.info(f"Sent motivation to {user_data['email']}")
+                else:
+                    logging.error(f"Failed to send to {user_data['email']}: {error}")
+                    
             except Exception as e:
-                logging.error(f"Error sending to {user_data.get('email', 'unknown')}: {str(e)}")
+                logging.error(f"Error processing {user_data.get('email', 'unknown')}: {str(e)}")
         
     except Exception as e:
         logging.error(f"Scheduled job error: {str(e)}")
@@ -175,34 +306,123 @@ async def send_scheduled_motivations():
 # Routes
 @api_router.get("/")
 async def root():
-    return {"message": "InboxInspire API", "version": "1.0"}
+    return {"message": "InboxInspire API", "version": "2.0"}
 
-@api_router.post("/users", response_model=UserProfile)
-async def create_user(input: UserProfileCreate):
-    # Check if user already exists
-    existing = await db.users.find_one({"email": input.email}, {"_id": 0})
-    if existing:
-        raise HTTPException(status_code=400, detail="User with this email already exists")
+@api_router.post("/auth/login")
+async def login(request: LoginRequest):
+    """Send magic link to email"""
+    # Generate magic link token
+    token = secrets.token_urlsafe(32)
     
-    profile = UserProfile(**input.model_dump())
+    # Check if user exists
+    user = await db.users.find_one({"email": request.email}, {"_id": 0})
+    
+    if user:
+        # Update existing user with new token
+        await db.users.update_one(
+            {"email": request.email},
+            {"$set": {"magic_link_token": token}}
+        )
+        user_exists = True
+    else:
+        # Store pending login
+        await db.pending_logins.update_one(
+            {"email": request.email},
+            {"$set": {"token": token, "created_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True
+        )
+        user_exists = False
+    
+    # Send magic link email
+    magic_link = f"https://inboxinspire.preview.emergentagent.com/?token={token}&email={request.email}"
+    
+    html_content = f"""
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .button {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h2>Welcome to InboxInspire!</h2>
+            <p>Click the button below to access your account:</p>
+            <p><a href="{magic_link}" class="button">Access My Account</a></p>
+            <p style="color: #666; font-size: 12px;">Or copy this link: {magic_link}</p>
+            <p style="color: #666; font-size: 12px;">This link expires in 1 hour.</p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    await send_email(request.email, "Your InboxInspire Login Link 🔐", html_content)
+    
+    return {"status": "success", "message": "Login link sent to your email", "user_exists": user_exists}
+
+@api_router.post("/auth/verify")
+async def verify_token(request: VerifyTokenRequest):
+    """Verify magic link token"""
+    # Check existing user
+    user = await db.users.find_one({"email": request.email, "magic_link_token": request.token}, {"_id": 0})
+    
+    if user:
+        # Clear token after use
+        await db.users.update_one(
+            {"email": request.email},
+            {"$set": {"magic_link_token": None}}
+        )
+        
+        if isinstance(user.get('created_at'), str):
+            user['created_at'] = datetime.fromisoformat(user['created_at'])
+        if isinstance(user.get('last_email_sent'), str):
+            user['last_email_sent'] = datetime.fromisoformat(user['last_email_sent'])
+        
+        return {"status": "success", "user_exists": True, "user": user}
+    
+    # Check pending login
+    pending = await db.pending_logins.find_one({"email": request.email, "token": request.token})
+    
+    if pending:
+        # Valid token for new user
+        return {"status": "success", "user_exists": False}
+    
+    raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+@api_router.post("/onboarding")
+async def complete_onboarding(request: OnboardingRequest):
+    """Complete onboarding for new user"""
+    # Check if user already exists
+    existing = await db.users.find_one({"email": request.email}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=400, detail="User already exists")
+    
+    profile = UserProfile(**request.model_dump())
     doc = profile.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
     
     await db.users.insert_one(doc)
-    return profile
+    
+    # Clean up pending login
+    await db.pending_logins.delete_one({"email": request.email})
+    
+    return {"status": "success", "user": profile}
 
-@api_router.get("/users/{email}", response_model=UserProfile)
+@api_router.get("/users/{email}")
 async def get_user(email: str):
     user = await db.users.find_one({"email": email}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    if isinstance(user['created_at'], str):
+    if isinstance(user.get('created_at'), str):
         user['created_at'] = datetime.fromisoformat(user['created_at'])
+    if isinstance(user.get('last_email_sent'), str):
+        user['last_email_sent'] = datetime.fromisoformat(user['last_email_sent'])
     
     return user
 
-@api_router.put("/users/{email}", response_model=UserProfile)
+@api_router.put("/users/{email}")
 async def update_user(email: str, updates: UserProfileUpdate):
     user = await db.users.find_one({"email": email}, {"_id": 0})
     if not user:
@@ -214,55 +434,87 @@ async def update_user(email: str, updates: UserProfileUpdate):
         await db.users.update_one({"email": email}, {"$set": update_data})
     
     updated_user = await db.users.find_one({"email": email}, {"_id": 0})
-    if isinstance(updated_user['created_at'], str):
+    if isinstance(updated_user.get('created_at'), str):
         updated_user['created_at'] = datetime.fromisoformat(updated_user['created_at'])
+    if isinstance(updated_user.get('last_email_sent'), str):
+        updated_user['last_email_sent'] = datetime.fromisoformat(updated_user['last_email_sent'])
     
     return updated_user
 
-@api_router.post("/generate-message", response_model=MessageGenResponse)
+@api_router.post("/generate-message")
 async def generate_message(request: MessageGenRequest):
-    message = await generate_motivational_message(request.goals, request.personality)
+    message = await generate_motivational_message(
+        request.goals, 
+        request.personality,
+        request.user_name
+    )
     return MessageGenResponse(message=message)
 
-@api_router.post("/send-test-email")
-async def send_test_email(request: TestEmailRequest):
+@api_router.post("/send-now/{email}")
+async def send_motivation_now(email: str):
+    """Send motivation email immediately"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    message = await generate_motivational_message(
+        user['goals'],
+        PersonalityType(**user['personality']),
+        user.get('name')
+    )
+    
     html_content = f"""
     <html>
-    <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px; color: white;">
-            <h1 style="margin: 0;">Test Message - Your Inspiration Awaits!</h1>
-        </div>
-        <div style="padding: 30px; background: #f9f9f9; border-radius: 10px; margin-top: 20px;">
-            <p style="font-size: 16px; line-height: 1.6; color: #333;">{request.message}</p>
-        </div>
-        <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
-            <p>This is a test email from InboxInspire</p>
+    <head>
+        <style>
+            body {{ font-family: 'Georgia', serif; line-height: 1.8; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; }}
+            .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center; }}
+            .header h1 {{ color: white; margin: 0; font-size: 28px; font-weight: 600; }}
+            .content {{ background: #ffffff; padding: 40px 30px; }}
+            .message {{ font-size: 16px; line-height: 1.8; color: #2d3748; white-space: pre-wrap; }}
+            .signature {{ margin-top: 30px; padding-top: 20px; border-top: 2px solid #e2e8f0; font-style: italic; color: #718096; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Your Inspiration Awaits</h1>
+            </div>
+            <div class="content">
+                <p style="font-size: 18px; color: #4a5568; margin-bottom: 25px;">Hello {user.get('name', 'there')},</p>
+                <div class="message">{message}</div>
+                <div class="signature">
+                    - Inspired by {user['personality']['value']}
+                </div>
+            </div>
         </div>
     </body>
     </html>
     """
     
-    success = await send_email(request.email, "Test Motivation 🌟", html_content)
+    success, error = await send_email(
+        email,
+        f"Your Motivation from {user['personality']['value']} ✨",
+        html_content
+    )
     
     if success:
-        return {"status": "success", "message": "Test email sent successfully"}
+        await db.users.update_one(
+            {"email": email},
+            {"$set": {"last_email_sent": datetime.now(timezone.utc).isoformat()}}
+        )
+        return {"status": "success", "message": "Email sent successfully"}
     else:
-        raise HTTPException(status_code=500, detail="Failed to send email")
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {error}")
 
 @api_router.get("/famous-personalities")
 async def get_famous_personalities():
     return {
         "personalities": [
-            "Elon Musk",
-            "Steve Jobs",
-            "A.P.J. Abdul Kalam",
-            "Oprah Winfrey",
-            "Nelson Mandela",
-            "Maya Angelou",
-            "Tony Robbins",
-            "Brené Brown",
-            "Simon Sinek",
-            "Michelle Obama"
+            "Elon Musk", "Steve Jobs", "A.P.J. Abdul Kalam", "Oprah Winfrey",
+            "Nelson Mandela", "Maya Angelou", "Tony Robbins", "Brené Brown",
+            "Simon Sinek", "Michelle Obama", "Warren Buffett", "Richard Branson"
         ]
     }
 
@@ -270,15 +522,45 @@ async def get_famous_personalities():
 async def get_tone_options():
     return {
         "tones": [
-            "Funny & Uplifting",
-            "Friendly & Warm",
-            "Roasting (Tough Love)",
-            "Serious & Direct",
-            "Philosophical & Deep",
-            "Energetic & Enthusiastic",
-            "Calm & Meditative",
-            "Poetic & Artistic"
+            "Funny & Uplifting", "Friendly & Warm", "Roasting (Tough Love)",
+            "Serious & Direct", "Philosophical & Deep", "Energetic & Enthusiastic",
+            "Calm & Meditative", "Poetic & Artistic"
         ]
+    }
+
+# Admin Routes
+@api_router.get("/admin/users", dependencies=[Depends(verify_admin)])
+async def admin_get_all_users():
+    users = await db.users.find({}, {"_id": 0}).to_list(1000)
+    for user in users:
+        if isinstance(user.get('created_at'), str):
+            user['created_at'] = datetime.fromisoformat(user['created_at'])
+        if isinstance(user.get('last_email_sent'), str):
+            user['last_email_sent'] = datetime.fromisoformat(user['last_email_sent'])
+    return {"users": users, "total": len(users)}
+
+@api_router.get("/admin/email-logs", dependencies=[Depends(verify_admin)])
+async def admin_get_email_logs(limit: int = 100):
+    logs = await db.email_logs.find({}, {"_id": 0}).sort("sent_at", -1).to_list(limit)
+    for log in logs:
+        if isinstance(log.get('sent_at'), str):
+            log['sent_at'] = datetime.fromisoformat(log['sent_at'])
+    return {"logs": logs}
+
+@api_router.get("/admin/stats", dependencies=[Depends(verify_admin)])
+async def admin_get_stats():
+    total_users = await db.users.count_documents({})
+    active_users = await db.users.count_documents({"active": True})
+    total_emails = await db.email_logs.count_documents({})
+    failed_emails = await db.email_logs.count_documents({"status": "failed"})
+    
+    return {
+        "total_users": total_users,
+        "active_users": active_users,
+        "inactive_users": total_users - active_users,
+        "total_emails_sent": total_emails,
+        "failed_emails": failed_emails,
+        "success_rate": round((total_emails - failed_emails) / total_emails * 100, 2) if total_emails > 0 else 0
     }
 
 # Include the router in the main app
@@ -304,7 +586,7 @@ async def startup_event():
     # Start scheduler
     scheduler.add_job(
         send_scheduled_motivations,
-        CronTrigger(hour=9, minute=0),  # Run daily at 9 AM
+        CronTrigger(hour=9, minute=0),
         id='daily_motivation',
         replace_existing=True
     )
