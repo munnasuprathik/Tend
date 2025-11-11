@@ -40,14 +40,20 @@ scheduler = AsyncIOScheduler()
 
 # Define Models
 class PersonalityType(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     type: Literal["famous", "tone", "custom"]
     value: str
+    active: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class ScheduleConfig(BaseModel):
     frequency: Literal["daily", "weekly", "monthly", "custom"]
-    time: str = "09:00"
-    custom_days: Optional[List[str]] = None
+    times: List[str] = ["09:00"]  # Multiple times support
+    custom_days: Optional[List[str]] = None  # ["monday", "wednesday", "friday"]
     custom_interval: Optional[int] = None
+    timezone: str = "UTC"
+    paused: bool = False
+    skip_next: bool = False
 
 class UserProfile(BaseModel):
     model_config = ConfigDict(extra="ignore")
