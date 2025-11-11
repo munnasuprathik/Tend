@@ -292,15 +292,38 @@ def get_current_personality(user_data):
     if rotation_mode == "random":
         import random
         return PersonalityType(**random.choice(personalities))
+    
     elif rotation_mode == "daily_fixed":
         # Each personality gets a specific day
         from datetime import datetime
         day_index = datetime.now().weekday()
         personality_index = day_index % len(personalities)
         return PersonalityType(**personalities[personality_index])
+    
+    elif rotation_mode == "weekly_rotation":
+        # Rotate weekly - same personality all week
+        from datetime import datetime
+        week_number = datetime.now().isocalendar()[1]
+        personality_index = week_number % len(personalities)
+        return PersonalityType(**personalities[personality_index])
+    
+    elif rotation_mode == "time_based":
+        # Morning vs Evening personalities
+        from datetime import datetime
+        hour = datetime.now().hour
+        if hour < 12:  # Morning - first half
+            personality_index = 0 if len(personalities) == 1 else 0
+        else:  # Afternoon/Evening - second half
+            personality_index = (len(personalities) // 2) if len(personalities) > 1 else 0
+        return PersonalityType(**personalities[min(personality_index, len(personalities) - 1)])
+    
+    elif rotation_mode == "favorite_weighted":
+        # TODO: Implement weighted selection based on ratings
+        # For now, fall back to sequential
+        return PersonalityType(**personalities[current_index])
+    
     else:  # sequential
         personality = PersonalityType(**personalities[current_index])
-        # Update index for next time
         return personality
 
 async def update_streak(email: str):
