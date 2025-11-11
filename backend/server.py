@@ -1048,11 +1048,19 @@ async def schedule_user_emails():
                 email = user_data['email']
                 times = schedule.get('times', ['09:00'])
                 frequency = schedule.get('frequency', 'daily')
+                user_timezone = schedule.get('timezone', 'UTC')
                 
                 # Parse time
                 time_parts = times[0].split(':')
                 hour = int(time_parts[0])
                 minute = int(time_parts[1])
+                
+                # Get timezone object
+                try:
+                    tz = pytz.timezone(user_timezone)
+                except:
+                    tz = pytz.UTC
+                    logger.warning(f"Invalid timezone {user_timezone} for {email}, using UTC")
                 
                 # Create job ID
                 job_id = f"user_{email.replace('@', '_at_').replace('.', '_')}"
@@ -1063,11 +1071,11 @@ async def schedule_user_emails():
                 except:
                     pass
                 
-                # Add new job based on frequency
+                # Add new job based on frequency with timezone
                 if frequency == 'daily':
                     scheduler.add_job(
                         send_scheduled_motivations,
-                        CronTrigger(hour=hour, minute=minute),
+                        CronTrigger(hour=hour, minute=minute, timezone=tz),
                         id=job_id,
                         replace_existing=True
                     )
@@ -1076,7 +1084,7 @@ async def schedule_user_emails():
                     day_of_week = 0  # Monday
                     scheduler.add_job(
                         send_scheduled_motivations,
-                        CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute),
+                        CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute, timezone=tz),
                         id=job_id,
                         replace_existing=True
                     )
@@ -1084,12 +1092,12 @@ async def schedule_user_emails():
                     # First day of month
                     scheduler.add_job(
                         send_scheduled_motivations,
-                        CronTrigger(day=1, hour=hour, minute=minute),
+                        CronTrigger(day=1, hour=hour, minute=minute, timezone=tz),
                         id=job_id,
                         replace_existing=True
                     )
                 
-                logger.info(f"Scheduled emails for {email} at {hour}:{minute} ({frequency})")
+                logger.info(f"Scheduled emails for {email} at {hour}:{minute:02d} {user_timezone} ({frequency})")
                 
             except Exception as e:
                 logger.error(f"Error scheduling for {user_data.get('email', 'unknown')}: {str(e)}")
