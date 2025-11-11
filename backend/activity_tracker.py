@@ -285,7 +285,13 @@ class ActivityTracker:
     async def get_user_activity_timeline(self, user_email: str, limit: int = 100):
         """Get complete activity timeline for a user"""
         activities = await self.db.activity_logs.find(
-            {"user_email": user_email}
+            {"user_email": user_email},
+            {"_id": 0}
         ).sort("timestamp", -1).limit(limit).to_list(limit)
+        
+        # Convert datetime objects to ISO strings
+        for activity in activities:
+            if isinstance(activity.get('timestamp'), datetime):
+                activity['timestamp'] = activity['timestamp'].isoformat()
         
         return activities
