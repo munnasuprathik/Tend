@@ -711,6 +711,205 @@ async def get_tone_options():
         ]
     }
 
+# Message History & Feedback Routes
+@api_router.get("/users/{email}/message-history")
+async def get_message_history(email: str, limit: int = 50):
+    """Get user's message history"""
+    messages = await db.message_history.find(
+        {"email": email}, 
+        {"_id": 0}
+    ).sort("sent_at", -1).to_list(limit)
+    
+    for msg in messages:
+        if isinstance(msg.get('sent_at'), str):
+            msg['sent_at'] = datetime.fromisoformat(msg['sent_at'])
+    
+    return {"messages": messages, "total": len(messages)}
+
+@api_router.post("/users/{email}/feedback")
+async def submit_feedback(email: str, feedback: MessageFeedbackCreate):
+    """Submit feedback for a message"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get current personality
+    personality = get_current_personality(user)
+    
+    feedback_doc = MessageFeedback(
+        email=email,
+        message_id=feedback.message_id,
+        personality=personality,
+        rating=feedback.rating,
+        feedback_text=feedback.feedback_text
+    )
+    
+    await db.message_feedback.insert_one(feedback_doc.model_dump())
+    
+    # Update message history with rating
+    if feedback.message_id:
+        await db.message_history.update_one(
+            {"id": feedback.message_id},
+            {"$set": {"rating": feedback.rating}}
+        )
+    
+    # Update last active
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"last_active": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    return {"status": "success", "message": "Feedback submitted"}
+
+@api_router.get("/users/{email}/analytics")
+async def get_user_analytics(email: str):
+    """Get user analytics"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get feedback stats
+    feedbacks = await db.message_feedback.find({"email": email}).to_list(1000)
+    
+    # Calculate average rating
+    ratings = [f['rating'] for f in feedbacks if 'rating' in f]
+    avg_rating = sum(ratings) / len(ratings) if ratings else None
+    
+    # Find favorite personality
+    personality_counts = {}
+    personality_ratings = {}
+    
+    for feedback in feedbacks:
+        pers_value = feedback.get('personality', {}).get('value', 'Unknown')
+        rating = feedback.get('rating', 0)
+        
+        if pers_value not in personality_counts:
+            personality_counts[pers_value] = 0
+            personality_ratings[pers_value] = []
+        
+        personality_counts[pers_value] += 1
+        personality_ratings[pers_value].append(rating)
+    
+    # Calculate avg rating per personality
+    personality_stats = {}
+    for pers, ratings in personality_ratings.items():
+        personality_stats[pers] = {
+            "count": personality_counts[pers],
+            "avg_rating": sum(ratings) / len(ratings) if ratings else 0
+        }
+    
+    # Find favorite (highest avg rating)
+    favorite_personality = None
+    highest_rating = 0
+    for pers, stats in personality_stats.items():
+        if stats['avg_rating'] > highest_rating:
+            highest_rating = stats['avg_rating']
+            favorite_personality = pers
+    
+    # Calculate engagement rate
+    total_messages = user.get('total_messages_received', 0)
+    total_feedback = len(feedbacks)
+    engagement_rate = (total_feedback / total_messages * 100) if total_messages > 0 else 0
+    
+    analytics = UserAnalytics(
+        email=email,
+        streak_count=user.get('streak_count', 0),
+        total_messages=total_messages,
+        favorite_personality=favorite_personality,
+        avg_rating=round(avg_rating, 2) if avg_rating else None,
+        last_active=user.get('last_active'),
+        engagement_rate=round(engagement_rate, 2),
+        personality_stats=personality_stats
+    )
+    
+    return analytics
+
+# Personality Management Routes
+@api_router.post("/users/{email}/personalities")
+async def add_personality(email: str, personality: PersonalityType):
+    """Add a new personality to user"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    personalities = user.get('personalities', [])
+    personalities.append(personality.model_dump())
+    
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"personalities": personalities}}
+    )
+    
+    return {"status": "success", "message": "Personality added"}
+
+@api_router.delete("/users/{email}/personalities/{personality_id}")
+async def remove_personality(email: str, personality_id: str):
+    """Remove a personality from user"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    personalities = user.get('personalities', [])
+    personalities = [p for p in personalities if p.get('id') != personality_id]
+    
+    if not personalities:
+        raise HTTPException(status_code=400, detail="Cannot remove last personality")
+    
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"personalities": personalities, "current_personality_index": 0}}
+    )
+    
+    return {"status": "success", "message": "Personality removed"}
+
+@api_router.put("/users/{email}/personalities/{personality_id}")
+async def update_personality(email: str, personality_id: str, updates: dict):
+    """Update a personality"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    personalities = user.get('personalities', [])
+    for i, p in enumerate(personalities):
+        if p.get('id') == personality_id:
+            personalities[i].update(updates)
+            break
+    
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"personalities": personalities}}
+    )
+    
+    return {"status": "success", "message": "Personality updated"}
+
+# Schedule Management Routes
+@api_router.post("/users/{email}/schedule/pause")
+async def pause_schedule(email: str):
+    """Pause user's email schedule"""
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"schedule.paused": True}}
+    )
+    return {"status": "success", "message": "Schedule paused"}
+
+@api_router.post("/users/{email}/schedule/resume")
+async def resume_schedule(email: str):
+    """Resume user's email schedule"""
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"schedule.paused": False}}
+    )
+    return {"status": "success", "message": "Schedule resumed"}
+
+@api_router.post("/users/{email}/schedule/skip-next")
+async def skip_next_email(email: str):
+    """Skip the next scheduled email"""
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"schedule.skip_next": True}}
+    )
+    return {"status": "success", "message": "Next email will be skipped"}
+
 # Admin Routes
 @api_router.get("/admin/users", dependencies=[Depends(verify_admin)])
 async def admin_get_all_users():
