@@ -752,7 +752,7 @@ async def verify_token(request: VerifyTokenRequest):
     raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 @api_router.post("/onboarding")
-async def complete_onboarding(request: OnboardingRequest):
+async def complete_onboarding(request: OnboardingRequest, req: Request):
     """Complete onboarding for new user"""
     # Check if user already exists
     existing = await db.users.find_one({"email": request.email}, {"_id": 0})
@@ -765,12 +765,47 @@ async def complete_onboarding(request: OnboardingRequest):
     
     await db.users.insert_one(doc)
     
+    # Save initial version history
+    await version_tracker.save_schedule_version(
+        user_email=request.email,
+        schedule_data=request.schedule.model_dump(),
+        changed_by="user",
+        change_reason="Initial onboarding"
+    )
+    
+    await version_tracker.save_personality_version(
+        user_email=request.email,
+        personalities=[p.model_dump() for p in request.personalities],
+        rotation_mode=request.rotation_mode,
+        changed_by="user"
+    )
+    
+    await version_tracker.save_profile_version(
+        user_email=request.email,
+        name=request.name,
+        goals=request.goals,
+        changed_by="user",
+        change_details={"event": "onboarding_complete"}
+    )
+    
+    # Track onboarding completion
+    ip_address = req.client.host if req.client else None
+    await tracker.log_user_activity(
+        action_type="onboarding_completed",
+        user_email=request.email,
+        details={
+            "personalities_count": len(request.personalities),
+            "schedule_frequency": request.schedule.frequency
+        },
+        ip_address=ip_address
+    )
+    
     # Clean up pending login
     await db.pending_logins.delete_one({"email": request.email})
     
     # Schedule emails for this new user
     await schedule_user_emails()
-    logger.info(f"Scheduled emails for new user: {request.email}")
+    logger.info(f"✅ Onboarding complete + history saved for: {request.email}")
     
     return {"status": "success", "user": profile}
 
