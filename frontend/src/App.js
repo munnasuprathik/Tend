@@ -11,8 +11,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
-import { CheckCircle, Mail, Sparkles, Clock, User, LogOut, Send, Edit, Shield, BarChart3, Users, MailCheck } from "lucide-react";
+import { CheckCircle, Mail, Sparkles, Clock, User, LogOut, Send, Edit, Shield, BarChart3, Users, MailCheck, History, TrendingUp } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { MessageHistory } from "@/components/MessageHistory";
+import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
+import { PersonalityManager } from "@/components/PersonalityManager";
+import { ScheduleManager } from "@/components/ScheduleManager";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
