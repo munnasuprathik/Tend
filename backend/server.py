@@ -1244,9 +1244,10 @@ async def schedule_user_emails():
                     pass
                 
                 # Add new job based on frequency with timezone
+                # FIXED: Now each job sends email ONLY to the specific user
                 if frequency == 'daily':
                     scheduler.add_job(
-                        send_scheduled_motivations,
+                        lambda user_email=email: asyncio.create_task(send_motivation_to_user(user_email)),
                         CronTrigger(hour=hour, minute=minute, timezone=tz),
                         id=job_id,
                         replace_existing=True
@@ -1255,7 +1256,7 @@ async def schedule_user_emails():
                     # Default to Monday if no days specified
                     day_of_week = 0  # Monday
                     scheduler.add_job(
-                        send_scheduled_motivations,
+                        lambda user_email=email: asyncio.create_task(send_motivation_to_user(user_email)),
                         CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute, timezone=tz),
                         id=job_id,
                         replace_existing=True
@@ -1263,7 +1264,7 @@ async def schedule_user_emails():
                 elif frequency == 'monthly':
                     # First day of month
                     scheduler.add_job(
-                        send_scheduled_motivations,
+                        lambda user_email=email: asyncio.create_task(send_motivation_to_user(user_email)),
                         CronTrigger(day=1, hour=hour, minute=minute, timezone=tz),
                         id=job_id,
                         replace_existing=True
