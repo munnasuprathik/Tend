@@ -101,3 +101,48 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Critical bug in email scheduling: When any user's scheduled time triggers (e.g., 9:00 AM), the system sends motivational emails to ALL active users instead of just the specific user whose schedule is due. The issue is in the APScheduler job setup where send_scheduled_motivations() (which sends to all users) was being called instead of send_motivation_to_user(email) (which sends to a specific user)."
+
+backend:
+  - task: "Fix email scheduling to send only to specific user"
+    implemented: true
+    working: "pending_test"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "critical"
+    needs_retesting: true
+    status_history:
+      - working: "pending_test"
+        agent: "main"
+        comment: "Fixed schedule_user_emails() function in server.py. Changed all three scheduler.add_job() calls (lines 1248, 1257, 1265) to use lambda functions that call send_motivation_to_user(user_email) instead of send_scheduled_motivations(). This ensures each scheduled job only sends email to the specific user whose schedule triggered, not all users. Used lambda with default parameter (user_email=email) to properly capture each user's email in the closure."
+
+frontend:
+  - task: "No frontend changes needed"
+    implemented: true
+    working: true
+    file: "N/A"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "This is a backend-only bug fix. No frontend changes required."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 1
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Fix email scheduling to send only to specific user"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Fixed critical email scheduling bug. The issue was in schedule_user_emails() function where scheduler.add_job() was calling send_scheduled_motivations() which iterates through ALL users. Changed to use lambda functions that call send_motivation_to_user(user_email) for each user's specific job. Backend has been restarted and logs show jobs are now created with lambda functions. Ready for testing with multiple test users to verify each user only receives emails at their own scheduled time."
