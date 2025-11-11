@@ -165,7 +165,7 @@ export function PersonalityManager({ user, onUpdate }) {
       <CardContent className="space-y-4">
         {/* Personality List */}
         <div className="space-y-2">
-          {user.personalities.map((personality, index) => (
+          {(user.personalities || []).map((personality, index) => (
             <div 
               key={personality.id} 
               className="flex items-center justify-between p-4 border rounded-lg"
@@ -176,8 +176,8 @@ export function PersonalityManager({ user, onUpdate }) {
                   {index + 1}
                 </div>
                 <div>
-                  <p className="font-semibold">{personality.value}</p>
-                  <p className="text-xs text-muted-foreground capitalize">{personality.type}</p>
+                  <p className="font-semibold">{personality?.value || 'Unknown'}</p>
+                  <p className="text-xs text-muted-foreground capitalize">{personality?.type || 'custom'}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
