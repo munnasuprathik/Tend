@@ -935,6 +935,18 @@ async def admin_get_stats():
     active_users = await db.users.count_documents({"active": True})
     total_emails = await db.email_logs.count_documents({})
     failed_emails = await db.email_logs.count_documents({"status": "failed"})
+    total_messages = await db.message_history.count_documents({})
+    total_feedback = await db.message_feedback.count_documents({})
+    
+    # Calculate average streak
+    users = await db.users.find({}, {"streak_count": 1, "_id": 0}).to_list(1000)
+    streaks = [u.get('streak_count', 0) for u in users]
+    avg_streak = sum(streaks) / len(streaks) if streaks else 0
+    
+    # Get feedback ratings
+    feedbacks = await db.message_feedback.find({}, {"rating": 1, "_id": 0}).to_list(10000)
+    ratings = [f.get('rating', 0) for f in feedbacks]
+    avg_rating = sum(ratings) / len(ratings) if ratings else 0
     
     return {
         "total_users": total_users,
@@ -942,8 +954,32 @@ async def admin_get_stats():
         "inactive_users": total_users - active_users,
         "total_emails_sent": total_emails,
         "failed_emails": failed_emails,
-        "success_rate": round((total_emails - failed_emails) / total_emails * 100, 2) if total_emails > 0 else 0
+        "success_rate": round((total_emails - failed_emails) / total_emails * 100, 2) if total_emails > 0 else 0,
+        "total_messages": total_messages,
+        "total_feedback": total_feedback,
+        "avg_streak": round(avg_streak, 1),
+        "avg_rating": round(avg_rating, 2),
+        "engagement_rate": round((total_feedback / total_messages * 100), 2) if total_messages > 0 else 0
     }
+
+@api_router.get("/admin/feedback", dependencies=[Depends(verify_admin)])
+async def admin_get_feedback(limit: int = 100):
+    """Get all feedback"""
+    feedbacks = await db.message_feedback.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
+    for fb in feedbacks:
+        if isinstance(fb.get('created_at'), str):
+            fb['created_at'] = datetime.fromisoformat(fb['created_at'])
+    return {"feedbacks": feedbacks}
+
+@api_router.put("/admin/users/{email}", dependencies=[Depends(verify_admin)])
+async def admin_update_user(email: str, updates: dict):
+    """Admin update any user field"""
+    await db.users.update_one(
+        {"email": email},
+        {"$set": updates}
+    )
+    updated_user = await db.users.find_one({"email": email}, {"_id": 0})
+    return {"status": "success", "user": updated_user}
 
 # Include the router in the main app
 app.include_router(api_router)
