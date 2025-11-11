@@ -17,6 +17,8 @@ import { MessageHistory } from "@/components/MessageHistory";
 import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
 import { PersonalityManager } from "@/components/PersonalityManager";
 import { ScheduleManager } from "@/components/ScheduleManager";
+import { StreakCalendar } from "@/components/StreakCalendar";
+import { TIMEZONES } from "@/utils/timezones";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
