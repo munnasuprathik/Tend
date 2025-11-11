@@ -483,39 +483,73 @@ async def send_motivation_to_user(email: str):
         }
         await db.message_history.insert_one(history_doc)
         
-        # Create HTML email
+        # Streak milestone message
+        streak_count = user_data.get('streak_count', 0)
+        streak_emoji = "🔥"
+        streak_message = f"{streak_count} Day Streak"
+        
+        if streak_count >= 100:
+            streak_emoji = "🏆"
+            streak_message = f"{streak_count} DAYS! LEGENDARY!"
+        elif streak_count >= 30:
+            streak_emoji = "💎"
+            streak_message = f"{streak_count} Days - Elite Level!"
+        elif streak_count >= 7:
+            streak_emoji = "🔥"
+            streak_message = f"{streak_count} Days - On Fire!"
+        elif streak_count == 1:
+            streak_emoji = "✨"
+            streak_message = "Day 1 - Let's Go!"
+        
+        # Create HTML email with engaging design
         html_content = f"""
         <html>
         <head>
             <style>
-                body {{ font-family: 'Georgia', serif; line-height: 1.8; color: #333; }}
-                .container {{ max-width: 600px; margin: 0 auto; }}
-                .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center; }}
-                .header h1 {{ color: white; margin: 0; font-size: 28px; font-weight: 600; }}
-                .content {{ background: #ffffff; padding: 40px 30px; }}
-                .message {{ font-size: 16px; line-height: 1.8; color: #2d3748; white-space: pre-wrap; }}
-                .signature {{ margin-top: 30px; padding-top: 20px; border-top: 2px solid #e2e8f0; font-style: italic; color: #718096; }}
-                .footer {{ text-align: center; padding: 20px; color: #a0aec0; font-size: 12px; }}
-                .streak {{ background: #f7fafc; padding: 15px; border-radius: 8px; margin: 20px 0; text-align: center; }}
-                .streak-count {{ font-size: 24px; font-weight: bold; color: #667eea; }}
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif; line-height: 1.6; color: #1a202c; margin: 0; padding: 0; background: #f7fafc; }}
+                .container {{ max-width: 600px; margin: 20px auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
+                .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; }}
+                .header h1 {{ color: white; margin: 0 0 10px 0; font-size: 26px; font-weight: 700; }}
+                .streak-badge {{ display: inline-block; background: rgba(255,255,255,0.2); padding: 8px 20px; border-radius: 20px; color: white; font-size: 14px; font-weight: 600; }}
+                .content {{ padding: 40px 30px; }}
+                .greeting {{ font-size: 20px; color: #2d3748; margin-bottom: 25px; font-weight: 500; }}
+                .streak-display {{ background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 20px; border-radius: 12px; text-align: center; margin: 25px 0; color: white; }}
+                .streak-display .emoji {{ font-size: 40px; margin-bottom: 5px; }}
+                .streak-display .count {{ font-size: 32px; font-weight: 800; margin: 5px 0; }}
+                .streak-display .label {{ font-size: 14px; opacity: 0.95; }}
+                .message {{ font-size: 16px; line-height: 1.8; color: #2d3748; margin: 25px 0; white-space: pre-wrap; }}
+                .question-box {{ background: #edf2f7; padding: 20px; border-radius: 10px; border-left: 4px solid #667eea; margin: 25px 0; }}
+                .question-box .icon {{ font-size: 20px; margin-bottom: 8px; }}
+                .question-box .text {{ font-size: 16px; color: #2d3748; font-weight: 500; line-height: 1.5; }}
+                .signature {{ margin-top: 30px; padding-top: 20px; border-top: 2px solid #e2e8f0; font-style: italic; color: #718096; font-size: 14px; }}
+                .reply-prompt {{ background: #667eea; color: white; padding: 15px; border-radius: 8px; text-align: center; margin: 25px 0; font-size: 14px; }}
+                .reply-prompt a {{ color: white; text-decoration: none; font-weight: 600; }}
+                .footer {{ text-align: center; padding: 20px; color: #a0aec0; font-size: 12px; background: #f7fafc; }}
             </style>
         </head>
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>Your Daily Inspiration</h1>
+                    <h1>✨ Your Daily Motivation</h1>
+                    <div class="streak-badge">{streak_emoji} {streak_message}</div>
                 </div>
                 <div class="content">
-                    <p style="font-size: 18px; color: #4a5568; margin-bottom: 25px;">Hello {user_data.get('name', 'there')},</p>
+                    <div class="greeting">Hey {user_data.get('name', 'there')}! 👋</div>
                     
-                    <div class="streak">
-                        <div>🔥 Your Streak</div>
-                        <div class="streak-count">{user_data.get('streak_count', 0)} Days</div>
+                    <div class="streak-display">
+                        <div class="emoji">{streak_emoji}</div>
+                        <div class="count">{streak_count}</div>
+                        <div class="label">{'DAY' if streak_count == 1 else 'DAYS'} OF MOTIVATION</div>
                     </div>
                     
                     <div class="message">{message}</div>
+                    
+                    <div class="reply-prompt">
+                        💬 <strong>Hit reply</strong> and share your thoughts - I read every response!
+                    </div>
+                    
                     <div class="signature">
-                        - Inspired by {personality.value}
+                        Inspired by {personality.value} • InboxInspire
                     </div>
                 </div>
                 <div class="footer">
