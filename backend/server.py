@@ -21,6 +21,7 @@ import secrets
 import pytz
 import time
 from activity_tracker import ActivityTracker
+from version_tracker import VersionTracker
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -44,6 +45,9 @@ scheduler = AsyncIOScheduler()
 
 # Initialize Activity Tracker
 tracker = ActivityTracker(db)
+
+# Initialize Version Tracker  
+version_tracker = VersionTracker(db)
 
 # Define Models
 class PersonalityType(BaseModel):
