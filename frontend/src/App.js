@@ -266,7 +266,7 @@ function OnboardingScreen({ email, onComplete }) {
         name: formData.name,
         goals: formData.goals,
         personalities: formData.personalities,
-        rotation_mode: formData.rotationMode,
+        rotation_mode: "sequential",
         schedule
       });
 
