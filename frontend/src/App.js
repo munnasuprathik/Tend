@@ -143,7 +143,14 @@ function LoginScreen({ onLoginSuccess }) {
               />
             </div>
             <Button type="submit" className="w-full" disabled={loading} data-testid="login-btn">
-              {loading ? "Sending..." : "Send Login Link"}
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
+                  Sending...
+                </>
+              ) : (
+                "Send Login Link"
+              )}
             </Button>
           </form>
         </CardContent>
