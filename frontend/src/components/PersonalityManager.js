@@ -11,7 +11,6 @@ import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { safeSelectValue, safePersonalityValue } from "@/utils/safeRender";
-import { sanitizeUser } from "@/utils/dataSanitizer";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -57,10 +56,7 @@ export function PersonalityManager({ user, onUpdate }) {
       
       // Refresh user data
       const response = await axios.get(`${API}/users/${user.email}`);
-      const sanitizedUser = sanitizeUser(response.data);
-      if (sanitizedUser) {
-        onUpdate(sanitizedUser);
-      }
+      onUpdate(response.data);
     } catch (error) {
       toast.error("Failed to add personality");
     } finally {
@@ -81,10 +77,7 @@ export function PersonalityManager({ user, onUpdate }) {
       
       // Refresh user data
       const response = await axios.get(`${API}/users/${user.email}`);
-      const sanitizedUser = sanitizeUser(response.data);
-      if (sanitizedUser) {
-        onUpdate(sanitizedUser);
-      }
+      onUpdate(response.data);
     } catch (error) {
       toast.error("Failed to remove personality");
     } finally {

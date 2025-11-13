@@ -16,9 +16,16 @@ export function RealTimeAnalytics({ adminToken }) {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
-  const headers = { Authorization: `Bearer ${adminToken}` };
-
   const fetchData = async () => {
+    // Don't fetch if no admin token
+    if (!adminToken) {
+      setLoading(false);
+      return;
+    }
+
+    // Create headers with current adminToken
+    const headers = { Authorization: `Bearer ${adminToken}` };
+
     try {
       const [realtimeRes, logsRes, perfRes, sessionsRes] = await Promise.all([
         axios.get(`${API}/analytics/realtime?minutes=5`, { headers }),
@@ -34,18 +41,29 @@ export function RealTimeAnalytics({ adminToken }) {
       setLastUpdate(new Date());
       setLoading(false);
     } catch (error) {
+      // Handle 403 errors gracefully (unauthorized)
+      if (error.response?.status === 403) {
+        console.warn('Access denied to analytics endpoints. Please ensure you are authenticated as admin.');
+        setLoading(false);
+        return;
+      }
       console.error('Failed to fetch realtime data:', error);
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
-    
-    // Auto-refresh every 5 seconds
-    const interval = setInterval(fetchData, 5000);
-    
-    return () => clearInterval(interval);
+    // Only fetch if we have an admin token
+    if (adminToken) {
+      fetchData();
+      
+      // Auto-refresh every 5 seconds
+      const interval = setInterval(fetchData, 5000);
+      
+      return () => clearInterval(interval);
+    } else {
+      setLoading(false);
+    }
   }, [adminToken]);
 
   const getActionColor = (actionType) => {
@@ -70,6 +88,16 @@ export function RealTimeAnalytics({ adminToken }) {
     // Use IST timezone for all timestamps
     return formatDateTimeForTimezone(date, ADMIN_TIMEZONE, { includeZone: false });
   };
+
+  if (!adminToken) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <div className="text-center">
+          <p className="text-muted-foreground">Please authenticate as admin to view real-time analytics.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

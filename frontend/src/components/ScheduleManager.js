@@ -10,7 +10,6 @@ import { Clock, Pause, Play, SkipForward } from "lucide-react";
 import { toast } from "sonner";
 import { TIMEZONES } from "@/utils/timezones";
 import { safeSelectValue } from "@/utils/safeRender";
-import { sanitizeUser } from "@/utils/dataSanitizer";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -48,10 +47,7 @@ export function ScheduleManager({ user, onUpdate }) {
       
       // Refresh user data
       const response = await axios.get(`${API}/users/${user.email}`);
-      const sanitizedUser = sanitizeUser(response.data);
-      if (sanitizedUser) {
-        onUpdate(sanitizedUser);
-      }
+      onUpdate(response.data);
     } catch (error) {
       toast.error("Failed to update schedule");
     } finally {
@@ -71,10 +67,7 @@ export function ScheduleManager({ user, onUpdate }) {
       
       // Refresh user data
       const response = await axios.get(`${API}/users/${user.email}`);
-      const sanitizedUser = sanitizeUser(response.data);
-      if (sanitizedUser) {
-        onUpdate(sanitizedUser);
-      }
+      onUpdate(response.data);
       setSchedule(response.data.schedule);
     } catch (error) {
       toast.error("Failed to update schedule");
@@ -91,10 +84,7 @@ export function ScheduleManager({ user, onUpdate }) {
       
       // Refresh user data
       const response = await axios.get(`${API}/users/${user.email}`);
-      const sanitizedUser = sanitizeUser(response.data);
-      if (sanitizedUser) {
-        onUpdate(sanitizedUser);
-      }
+      onUpdate(response.data);
       setSchedule(response.data.schedule);
     } catch (error) {
       toast.error("Failed to skip next email");

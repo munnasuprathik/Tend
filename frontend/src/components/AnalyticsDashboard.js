@@ -1,38 +1,39 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import React from "react";
 import axios from "axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Flame, TrendingUp, Star, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
+import { SkeletonLoader } from "@/components/SkeletonLoader";
+import { retryWithBackoff } from "@/utils/retry";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
-export function AnalyticsDashboard({ email, refreshKey = 0 }) {
+export const AnalyticsDashboard = React.memo(function AnalyticsDashboard({ email, refreshKey = 0 }) {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchAnalytics = async () => {
-      setLoading(true);
-      try {
-        const response = await axios.get(`${API}/users/${email}/analytics`);
-        setAnalytics(response.data);
-      } catch (error) {
-        toast.error("Failed to load analytics");
-      } finally {
-        setLoading(false);
-      }
-    };
-
+  const fetchAnalytics = useCallback(async () => {
+    setLoading(true);
     try {
-      fetchAnalytics();
+      const response = await retryWithBackoff(async () => {
+        return await axios.get(`${API}/users/${email}/analytics`);
+      });
+      setAnalytics(response.data);
     } catch (error) {
-      // error display handled in fetchAnalytics
+      toast.error(error.response?.data?.detail || "Failed to load analytics");
+    } finally {
+      setLoading(false);
     }
-  }, [email, refreshKey]);
+  }, [email]);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics, refreshKey]);
 
   if (loading) {
-    return <div className="text-center py-8">Loading analytics...</div>;
+    return <SkeletonLoader variant="card" count={4} />;
   }
 
   if (!analytics) {
@@ -40,9 +41,9 @@ export function AnalyticsDashboard({ email, refreshKey = 0 }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Card data-testid="streak-card">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -142,4 +143,4 @@ export function AnalyticsDashboard({ email, refreshKey = 0 }) {
       )}
     </div>
   );
-}
+});

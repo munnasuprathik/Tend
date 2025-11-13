@@ -3,7 +3,6 @@ import ReactDOM from "react-dom/client";
 import { ClerkProvider } from "@clerk/clerk-react";
 import "@/index.css";
 import App from "@/App";
-import ErrorBoundary from "@/components/ErrorBoundary";
 
 // Hide noisy ResizeObserver errors in dev overlay
 if (typeof window !== "undefined") {
@@ -119,10 +118,8 @@ if (!clerkPublishableKey) {
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
   <React.StrictMode>
-    <ErrorBoundary>
-      <ClerkProvider publishableKey={clerkPublishableKey}>
-        <App />
-      </ClerkProvider>
-    </ErrorBoundary>
+    <ClerkProvider publishableKey={clerkPublishableKey}>
+      <App />
+    </ClerkProvider>
   </React.StrictMode>,
 );

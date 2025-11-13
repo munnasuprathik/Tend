@@ -7,7 +7,7 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
-from typing import List, Optional, Literal, Dict, Any, Tuple
+from typing import List, Optional, Literal, Dict, Any
 import uuid
 from datetime import datetime, timezone, timedelta
 import httpx
@@ -18,9 +18,18 @@ from openai import AsyncOpenAI
 import asyncio
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-import secrets
+from apscheduler.triggers.interval import IntervalTrigger
 import pytz
+import secrets
 import time
+import sys
+from pathlib import Path
+
+# Add backend directory to Python path for imports
+backend_dir = Path(__file__).parent
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
+
 from activity_tracker import ActivityTracker
 from version_tracker import VersionTracker
 import warnings
@@ -171,6 +180,358 @@ def extract_interactive_sections(message: str) -> tuple[str, List[str], List[str
 
     return core_message, check_in_lines, quick_reply_lines
 
+
+# Achievement definitions - stored in DB, initialized on startup
+DEFAULT_ACHIEVEMENTS = [
+    {
+        "id": "first_streak",
+        "name": "Getting Started",
+        "description": "Maintain a 3-day streak",
+        "icon_name": "Sprout",
+        "category": "streak",
+        "requirement": {"type": "streak", "value": 3},
+        "priority": 1,
+        "show_on_home": True
+    },
+    {
+        "id": "week_warrior",
+        "name": "Week Warrior",
+        "description": "Maintain a 7-day streak",
+        "icon_name": "Flame",
+        "category": "streak",
+        "requirement": {"type": "streak", "value": 7},
+        "priority": 2,
+        "show_on_home": True
+    },
+    {
+        "id": "month_master",
+        "name": "Month Master",
+        "description": "Maintain a 30-day streak",
+        "icon_name": "Zap",
+        "category": "streak",
+        "requirement": {"type": "streak", "value": 30},
+        "priority": 3,
+        "show_on_home": True
+    },
+    {
+        "id": "century_club",
+        "name": "Century Club",
+        "description": "Maintain a 100-day streak",
+        "icon_name": "Trophy",
+        "category": "streak",
+        "requirement": {"type": "streak", "value": 100},
+        "priority": 4,
+        "show_on_home": True
+    },
+    {
+        "id": "first_message",
+        "name": "First Step",
+        "description": "Receive your first message",
+        "icon_name": "Mail",
+        "category": "messages",
+        "requirement": {"type": "messages", "value": 1},
+        "priority": 1,
+        "show_on_home": True
+    },
+    {
+        "id": "message_collector",
+        "name": "Message Collector",
+        "description": "Receive 50 messages",
+        "icon_name": "BookOpen",
+        "category": "messages",
+        "requirement": {"type": "messages", "value": 50},
+        "priority": 2,
+        "show_on_home": False
+    },
+    {
+        "id": "century_messages",
+        "name": "Century Messages",
+        "description": "Receive 100 messages",
+        "icon_name": "Book",
+        "category": "messages",
+        "requirement": {"type": "messages", "value": 100},
+        "priority": 3,
+        "show_on_home": False
+    },
+    {
+        "id": "feedback_enthusiast",
+        "name": "Feedback Enthusiast",
+        "description": "Rate 10 messages",
+        "icon_name": "Star",
+        "category": "engagement",
+        "requirement": {"type": "feedback_count", "value": 10},
+        "priority": 2,
+        "show_on_home": False
+    },
+    {
+        "id": "goal_setter",
+        "name": "Goal Setter",
+        "description": "Set your first goal",
+        "icon_name": "Target",
+        "category": "goals",
+        "requirement": {"type": "has_goal", "value": True},
+        "priority": 1,
+        "show_on_home": True
+    },
+    {
+        "id": "goal_achiever",
+        "name": "Goal Achiever",
+        "description": "Complete a goal",
+        "icon_name": "CheckCircle",
+        "category": "goals",
+        "requirement": {"type": "goal_completed", "value": 1},
+        "priority": 2,
+        "show_on_home": True
+    },
+    {
+        "id": "early_bird",
+        "name": "Early Bird",
+        "description": "Receive messages for 5 consecutive days",
+        "icon_name": "Clock",
+        "category": "consistency",
+        "requirement": {"type": "consecutive_days", "value": 5},
+        "priority": 1,
+        "show_on_home": True
+    },
+    {
+        "id": "dedicated_learner",
+        "name": "Dedicated Learner",
+        "description": "Receive messages for 14 consecutive days",
+        "icon_name": "BookOpen",
+        "category": "consistency",
+        "requirement": {"type": "consecutive_days", "value": 14},
+        "priority": 2,
+        "show_on_home": True
+    },
+    {
+        "id": "feedback_master",
+        "name": "Feedback Master",
+        "description": "Rate 25 messages",
+        "icon_name": "Star",
+        "category": "engagement",
+        "requirement": {"type": "feedback_count", "value": 25},
+        "priority": 3,
+        "show_on_home": False
+    },
+    {
+        "id": "message_milestone_250",
+        "name": "Message Milestone",
+        "description": "Receive 250 messages",
+        "icon_name": "Mail",
+        "category": "messages",
+        "requirement": {"type": "messages", "value": 250},
+        "priority": 4,
+        "show_on_home": False
+    },
+    {
+        "id": "streak_legend",
+        "name": "Streak Legend",
+        "description": "Maintain a 365-day streak",
+        "icon_name": "Flame",
+        "category": "streak",
+        "requirement": {"type": "streak", "value": 365},
+        "priority": 5,
+        "show_on_home": True
+    },
+    {
+        "id": "personality_explorer",
+        "name": "Personality Explorer",
+        "description": "Try 3 different personalities",
+        "icon_name": "Sparkles",
+        "category": "engagement",
+        "requirement": {"type": "personality_count", "value": 3},
+        "priority": 2,
+        "show_on_home": True
+    },
+    {
+        "id": "goal_crusher",
+        "name": "Goal Crusher",
+        "description": "Complete 5 goals",
+        "icon_name": "Target",
+        "category": "goals",
+        "requirement": {"type": "goal_completed", "value": 5},
+        "priority": 3,
+        "show_on_home": True
+    },
+    {
+        "id": "top_rated",
+        "name": "Top Rated",
+        "description": "Give 5-star rating to 10 messages",
+        "icon_name": "Star",
+        "category": "engagement",
+        "requirement": {"type": "five_star_ratings", "value": 10},
+        "priority": 2,
+        "show_on_home": False
+    },
+    {
+        "id": "loyal_member",
+        "name": "Loyal Member",
+        "description": "Active for 6 months",
+        "icon_name": "Award",
+        "category": "loyalty",
+        "requirement": {"type": "account_age_days", "value": 180},
+        "priority": 3,
+        "show_on_home": True
+    },
+    {
+        "id": "veteran",
+        "name": "Veteran",
+        "description": "Active for 1 year",
+        "icon_name": "Trophy",
+        "category": "loyalty",
+        "requirement": {"type": "account_age_days", "value": 365},
+        "priority": 4,
+        "show_on_home": True
+    },
+    {
+        "id": "message_architect",
+        "name": "Message Architect",
+        "description": "Receive 500 messages",
+        "icon_name": "Book",
+        "category": "messages",
+        "requirement": {"type": "messages", "value": 500},
+        "priority": 5,
+        "show_on_home": False
+    }
+]
+
+async def initialize_achievements():
+    """Initialize achievements in database if not exists, and add any missing ones"""
+    try:
+        existing = await db.achievements.find_one({})
+        if not existing:
+            # First time initialization - add all achievements
+            logger.info(f"Initializing achievements: No existing achievements found. Adding {len(DEFAULT_ACHIEVEMENTS)} achievements...")
+            for achievement in DEFAULT_ACHIEVEMENTS:
+                achievement_copy = achievement.copy()
+                achievement_copy["created_at"] = datetime.now(timezone.utc).isoformat()
+                achievement_copy["updated_at"] = datetime.now(timezone.utc).isoformat()
+                achievement_copy["active"] = True
+                await db.achievements.insert_one(achievement_copy)
+            logger.info(f"✅ Achievements initialized in database: {len(DEFAULT_ACHIEVEMENTS)} achievements added")
+        else:
+            # Database exists - check for missing achievements and add them
+            existing_ids = await db.achievements.distinct("id")
+            logger.info(f"Found {len(existing_ids)} existing achievements in database")
+            missing_achievements = [ach for ach in DEFAULT_ACHIEVEMENTS if ach["id"] not in existing_ids]
+            if missing_achievements:
+                logger.info(f"Adding {len(missing_achievements)} missing achievements...")
+                for achievement in missing_achievements:
+                    achievement_copy = achievement.copy()
+                    achievement_copy["created_at"] = datetime.now(timezone.utc).isoformat()
+                    achievement_copy["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    achievement_copy["active"] = True
+                    await db.achievements.insert_one(achievement_copy)
+                logger.info(f"✅ Added {len(missing_achievements)} missing achievements to database")
+            else:
+                logger.info(f"✅ All {len(DEFAULT_ACHIEVEMENTS)} achievements already exist in database")
+        
+        # Verify final count
+        total_count = await db.achievements.count_documents({})
+        active_count = await db.achievements.count_documents({"active": True})
+        logger.info(f"📊 Achievement database status: {total_count} total, {active_count} active")
+    except Exception as e:
+        logger.error(f"❌ Error initializing achievements: {e}", exc_info=True)
+        raise
+
+async def get_achievements_from_db():
+    """Get all active achievements from database"""
+    achievements = await db.achievements.find({"active": True}, {"_id": 0}).to_list(100)
+    return {ach["id"]: ach for ach in achievements}
+
+async def check_and_unlock_achievements(email: str, user_data: dict, feedback_count: int = 0):
+    """Check and unlock achievements based on user progress"""
+    unlocked = []
+    current_achievements = user_data.get("achievements", [])
+    
+    # Get achievements from database
+    achievements_dict = await get_achievements_from_db()
+    
+    for achievement_id, achievement in achievements_dict.items():
+        if achievement_id in current_achievements:
+            continue  # Already unlocked
+        
+        req = achievement.get("requirement", {})
+        req_type = req.get("type")
+        req_value = req.get("value")
+        
+        unlocked_this = False
+        
+        if req_type == "streak":
+            if user_data.get("streak_count", 0) >= req_value:
+                unlocked_this = True
+        elif req_type == "messages":
+            if user_data.get("total_messages_received", 0) >= req_value:
+                unlocked_this = True
+        elif req_type == "feedback_count":
+            if feedback_count >= req_value:
+                unlocked_this = True
+        elif req_type == "has_goal":
+            if user_data.get("goals") and len(user_data.get("goals", "").strip()) > 0:
+                unlocked_this = True
+        elif req_type == "goal_completed":
+            goal_progress = user_data.get("goal_progress", {})
+            completed_count = sum(1 for g in goal_progress.values() if isinstance(g, dict) and g.get("completed", False))
+            if completed_count >= req_value:
+                unlocked_this = True
+        elif req_type == "consecutive_days":
+            # Check consecutive days based on last_email_sent
+            last_email = user_data.get("last_email_sent")
+            if last_email:
+                try:
+                    last_date = datetime.fromisoformat(last_email.replace('Z', '+00:00'))
+                    days_since = (datetime.now(timezone.utc) - last_date).days
+                    if days_since <= req_value:
+                        unlocked_this = True
+                except:
+                    pass
+        elif req_type == "personality_count":
+            personalities = user_data.get("personalities", [])
+            if len(personalities) >= req_value:
+                unlocked_this = True
+        elif req_type == "five_star_ratings":
+            # This would need to be tracked separately or calculated from feedback
+            # For now, we'll check feedback_count as a proxy
+            if feedback_count >= req_value:
+                unlocked_this = True
+        elif req_type == "account_age_days":
+            created_at = user_data.get("created_at")
+            if created_at:
+                try:
+                    created_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    account_age = (datetime.now(timezone.utc) - created_date).days
+                    if account_age >= req_value:
+                        unlocked_this = True
+                except:
+                    pass
+        
+        if unlocked_this:
+            unlocked.append(achievement_id)
+            # Update user achievements with unlock timestamp
+            achievement_unlock = {
+                "achievement_id": achievement_id,
+                "unlocked_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.users.update_one(
+                {"email": email},
+                {
+                    "$addToSet": {"achievements": achievement_id},
+                    "$push": {"achievement_history": achievement_unlock}
+                }
+            )
+            # Log achievement unlock
+            await tracker.log_user_activity(
+                email=email,
+                action_type="achievement_unlocked",
+                action_category="user_action",
+                details={
+                    "achievement_id": achievement_id,
+                    "achievement_name": achievement.get("name", ""),
+                    "category": achievement.get("category", "")
+                }
+            )
+    
+    return unlocked
 
 def resolve_streak_badge(streak_count: int) -> tuple[str, str]:
     """Return streak icon label and message without emojis."""
@@ -443,7 +804,8 @@ class ScheduleConfig(BaseModel):
     frequency: Literal["daily", "weekly", "monthly", "custom"]
     times: List[str] = ["09:00"]  # Multiple times support
     custom_days: Optional[List[str]] = None  # ["monday", "wednesday", "friday"]
-    custom_interval: Optional[int] = None
+    custom_interval: Optional[int] = None  # For custom frequency: every N days
+    monthly_dates: Optional[List[str]] = None  # ["1", "15", "30"] - days of month
     timezone: str = "UTC"
     paused: bool = False
     skip_next: bool = False
@@ -466,6 +828,11 @@ class UserProfile(BaseModel):
     streak_count: int = 0
     total_messages_received: int = 0
     last_active: Optional[datetime] = None
+    achievements: List[str] = []  # List of achievement IDs unlocked
+    favorite_messages: List[str] = []  # List of message IDs marked as favorite
+    message_collections: Dict[str, List[str]] = {}  # Collection name -> message IDs
+    goal_progress: Dict[str, Any] = {}  # Goal tracking data
+    content_preferences: Dict[str, Any] = {}  # User content preferences
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -1133,32 +1500,54 @@ def get_current_personality(user_data):
         personality = PersonalityType(**personalities[current_index])
         return personality
 
-async def update_streak(email: str):
-    """Update user streak count"""
+async def update_streak(email: str, sent_timestamp: Optional[datetime] = None):
+    """Update user streak count based on consecutive days of receiving emails"""
     user = await db.users.find_one({"email": email})
     if not user:
         return
     
+    if sent_timestamp is None:
+        sent_timestamp = datetime.now(timezone.utc)
+    
     last_sent = user.get('last_email_sent')
-    streak = user.get('streak_count', 0)
+    current_streak = user.get('streak_count', 0)
     
     if last_sent:
         if isinstance(last_sent, str):
-            last_sent = datetime.fromisoformat(last_sent)
+            try:
+                last_sent = datetime.fromisoformat(last_sent.replace('Z', '+00:00'))
+            except:
+                last_sent = datetime.fromisoformat(last_sent)
         
-        # Check if last email was yesterday
-        days_diff = (datetime.now(timezone.utc) - last_sent).days
-        if days_diff == 1:
-            streak += 1
-        elif days_diff > 1:
-            streak = 1
+        # Normalize to dates (ignore time)
+        last_sent_date = last_sent.date()
+        current_date = sent_timestamp.date()
+        
+        # Calculate days difference
+        days_diff = (current_date - last_sent_date).days
+        
+        if days_diff == 0:
+            # Same day - don't increment, keep current streak
+            new_streak = current_streak
+        elif days_diff == 1:
+            # Consecutive day - increment streak
+            new_streak = current_streak + 1
+        else:
+            # Gap of more than 1 day - reset to 1
+            new_streak = 1
     else:
-        streak = 1
+        # First email ever - start at 1
+        new_streak = 1
     
+    # Update streak in database
     await db.users.update_one(
         {"email": email},
-        {"$set": {"streak_count": streak}}
+        {"$set": {"streak_count": new_streak}}
     )
+    
+    logger.info(f"Updated streak for {email}: {current_streak} -> {new_streak} (last_sent: {last_sent}, days_diff: {(sent_timestamp.date() - (last_sent.date() if last_sent else sent_timestamp.date())).days if last_sent else 'N/A'})")
+    
+    return new_streak
 
 # Send email to a SPECIFIC user (called by scheduler)
 async def send_motivation_to_user(email: str):
@@ -1189,9 +1578,8 @@ async def send_motivation_to_user(email: str):
             logger.info(f"Skipped {email} - skip_next was set")
             return
         
-        # Update streak
-        await update_streak(email)
-        user_data = await db.users.find_one({"email": email}, {"_id": 0})  # Refresh to get updated streak
+        # Get user data (we'll update streak after sending email)
+        user_data = await db.users.find_one({"email": email}, {"_id": 0})
         
         # Get current personality
         personality = get_current_personality(user_data)
@@ -1199,18 +1587,56 @@ async def send_motivation_to_user(email: str):
             logger.warning(f"No personality found for {email}")
             return
         
+        # Calculate streak FIRST (before generating message) to use correct streak in email
+        sent_dt = datetime.now(timezone.utc)
+        sent_timestamp = sent_dt.isoformat()
+        
+        # Calculate what the streak will be after sending this email
+        current_streak = user_data.get('streak_count', 0)
+        last_sent = user_data.get('last_email_sent')
+        
+        if last_sent:
+            if isinstance(last_sent, str):
+                try:
+                    last_sent_dt = datetime.fromisoformat(last_sent.replace('Z', '+00:00'))
+                except:
+                    last_sent_dt = datetime.fromisoformat(last_sent)
+            else:
+                last_sent_dt = last_sent
+                
+            last_sent_date = last_sent_dt.date()
+            current_date = sent_dt.date()
+            days_diff = (current_date - last_sent_date).days
+            
+            if days_diff == 0:
+                # Same day - keep current streak (don't increment)
+                streak_count = current_streak if current_streak > 0 else 1
+                logger.info(f"Streak calculation for {email}: Same day ({current_date}), keeping streak at {streak_count}")
+            elif days_diff == 1:
+                # Consecutive day - increment streak
+                streak_count = current_streak + 1
+                logger.info(f"Streak calculation for {email}: Consecutive day ({last_sent_date} -> {current_date}), incrementing {current_streak} -> {streak_count}")
+            else:
+                # Gap of more than 1 day - reset to 1
+                streak_count = 1
+                logger.info(f"Streak calculation for {email}: Gap of {days_diff} days ({last_sent_date} -> {current_date}), resetting to {streak_count}")
+        else:
+            # First email ever - start at 1
+            streak_count = 1
+            logger.info(f"Streak calculation for {email}: First email ever, starting at {streak_count}")
+        
         # Get previous messages to avoid repetition
         previous_messages = await db.message_history.find(
             {"email": email},
             {"_id": 0}
         ).sort("created_at", -1).limit(10).to_list(10)
         
-        # Generate UNIQUE message with questions
+        # Generate UNIQUE message with questions using the CALCULATED streak
         message, message_type, used_fallback, research_snippet = await generate_unique_motivational_message(
             user_data['goals'],
             personality,
             user_data.get('name'),
-            user_data.get('streak_count', 0),
+            streak_count,  # Use calculated streak, not old one
             previous_messages
         )
         
@@ -1230,8 +1656,6 @@ async def send_motivation_to_user(email: str):
         
         # Save to message history with message type for tracking
         message_id = str(uuid.uuid4())
-        sent_dt = datetime.now(timezone.utc)
-        sent_timestamp = sent_dt.isoformat()
         history_doc = {
             "id": message_id,
             "email": email,
@@ -1240,12 +1664,11 @@ async def send_motivation_to_user(email: str):
             "message_type": message_type,
             "created_at": sent_timestamp,
             "sent_at": sent_timestamp,
-            "streak_at_time": user_data.get('streak_count', 0),
+            "streak_at_time": streak_count,
             "used_fallback": used_fallback
         }
         await db.message_history.insert_one(history_doc)
         
-        streak_count = user_data.get('streak_count', 0)
         streak_icon, streak_message = resolve_streak_badge(streak_count)
         core_message, check_in_lines, quick_reply_lines = extract_interactive_sections(message)
         ci_defaults, qr_defaults = generate_interactive_defaults(
@@ -1264,10 +1687,14 @@ async def send_motivation_to_user(email: str):
             quick_reply_lines=quick_reply_lines,
         )
 
+        # Create updated user_data with new streak for subject line generation
+        updated_user_data = user_data.copy()
+        updated_user_data['streak_count'] = streak_count
+
         subject_line = await compose_subject_line(
             personality,
             message_type,
-            user_data,
+            updated_user_data,  # Use updated user_data with new streak
             used_fallback,
             research_snippet
         )
@@ -1275,37 +1702,29 @@ async def send_motivation_to_user(email: str):
         success, error = await send_email(email, subject_line, html_content)
         
         if success:
-            # Update last email sent time, streak, and total messages
-            await update_streak(email)
-            
+            # Update streak and last email sent time
             # Rotate personality if sequential
             personalities = user_data.get('personalities', [])
+            update_data = {
+                "last_email_sent": sent_timestamp,
+                "last_active": sent_timestamp,
+                "streak_count": streak_count
+            }
+            
             if user_data.get('rotation_mode') == 'sequential' and len(personalities) > 1:
                 current_index = user_data.get('current_personality_index', 0)
                 next_index = (current_index + 1) % len(personalities)
-                
-                await db.users.update_one(
-                    {"email": email},
-                    {
-                        "$set": {
-                            "last_email_sent": sent_timestamp,
-                            "last_active": sent_timestamp,
-                            "current_personality_index": next_index
-                        },
-                        "$inc": {"total_messages_received": 1}
-                    }
-                )
-            else:
-                await db.users.update_one(
-                    {"email": email},
-                    {
-                        "$set": {
-                            "last_email_sent": sent_timestamp,
-                            "last_active": sent_timestamp
-                        },
-                        "$inc": {"total_messages_received": 1}
-                    }
-                )
+                update_data["current_personality_index"] = next_index
+            
+            await db.users.update_one(
+                {"email": email},
+                {
+                    "$set": update_data,
+                    "$inc": {"total_messages_received": 1}
+                }
+            )
+            
+            logger.info(f"✅ Email sent to {email} - Streak updated to {streak_count} days")
             
             await record_email_log(
                 email=email,
@@ -1432,37 +1851,31 @@ async def send_scheduled_motivations():
                 )
                 
                 if success:
-                    # Update last email sent time, streak, and total messages
-                    await update_streak(user_data['email'])
+                    # Calculate and update streak
+                    sent_dt = datetime.now(timezone.utc)
+                    sent_timestamp = sent_dt.isoformat()
+                    new_streak = await update_streak(user_data['email'], sent_dt)
                     
                     # Rotate personality if sequential
                     personalities = user_data.get('personalities', [])
+                    update_data = {
+                        "last_email_sent": sent_timestamp,
+                        "last_active": sent_timestamp,
+                        "streak_count": new_streak
+                    }
+                    
                     if user_data.get('rotation_mode') == 'sequential' and len(personalities) > 1:
                         current_index = user_data.get('current_personality_index', 0)
                         next_index = (current_index + 1) % len(personalities)
-                        
-                        await db.users.update_one(
-                            {"email": user_data['email']},
-                            {
-                                "$set": {
-                                    "last_email_sent": datetime.now(timezone.utc).isoformat(),
-                                    "last_active": datetime.now(timezone.utc).isoformat(),
-                                    "current_personality_index": next_index
-                                },
-                                "$inc": {"total_messages_received": 1}
-                            }
-                        )
-                    else:
-                        await db.users.update_one(
-                            {"email": user_data['email']},
-                            {
-                                "$set": {
-                                    "last_email_sent": datetime.now(timezone.utc).isoformat(),
-                                    "last_active": datetime.now(timezone.utc).isoformat()
-                                },
-                                "$inc": {"total_messages_received": 1}
-                            }
-                        )
+                        update_data["current_personality_index"] = next_index
+                    
+                    await db.users.update_one(
+                        {"email": user_data['email']},
+                        {
+                            "$set": update_data,
+                            "$inc": {"total_messages_received": 1}
+                        }
+                    )
                     
                     logging.info(f"Sent motivation to {user_data['email']}")
                 else:
@@ -1767,11 +2180,43 @@ async def send_motivation_now(email: str):
     if not personality:
         raise HTTPException(status_code=400, detail="No personality configured")
     
+    # Calculate streak FIRST (before generating message) to use correct streak in email
+    sent_dt = datetime.now(timezone.utc)
+    current_streak = user.get('streak_count', 0)
+    last_sent = user.get('last_email_sent')
+    
+    if last_sent:
+        if isinstance(last_sent, str):
+            try:
+                last_sent_dt = datetime.fromisoformat(last_sent.replace('Z', '+00:00'))
+            except:
+                last_sent_dt = datetime.fromisoformat(last_sent)
+        else:
+            last_sent_dt = last_sent
+            
+        last_sent_date = last_sent_dt.date()
+        current_date = sent_dt.date()
+        days_diff = (current_date - last_sent_date).days
+        
+        if days_diff == 0:
+            streak_count = current_streak if current_streak > 0 else 1
+            logger.info(f"Streak calculation (send-now) for {email}: Same day, keeping streak at {streak_count}")
+        elif days_diff == 1:
+            streak_count = current_streak + 1
+            logger.info(f"Streak calculation (send-now) for {email}: Consecutive day, incrementing {current_streak} -> {streak_count}")
+        else:
+            streak_count = 1
+            logger.info(f"Streak calculation (send-now) for {email}: Gap of {days_diff} days, resetting to {streak_count}")
+    else:
+        streak_count = 1
+        logger.info(f"Streak calculation (send-now) for {email}: First email ever, starting at {streak_count}")
+    
+    # Generate message using the CALCULATED streak
     message, message_type, used_fallback, research_snippet = await generate_unique_motivational_message(
         user['goals'],
         personality,
         user.get('name'),
-        user.get('streak_count', 0),
+        streak_count,  # Use calculated streak, not old one
         []
     )
     if used_fallback:
@@ -1790,7 +2235,6 @@ async def send_motivation_now(email: str):
     
     # Save to history
     message_id = str(uuid.uuid4())
-    sent_dt = datetime.now(timezone.utc)
     history = MessageHistory(
         id=message_id,
         email=email,
@@ -1801,9 +2245,9 @@ async def send_motivation_now(email: str):
     ).model_dump()
     history["message_type"] = message_type
     history["created_at"] = history.get("sent_at")
+    history["streak_at_time"] = streak_count  # Store the streak at time of sending
     await db.message_history.insert_one(history)
     
-    streak_count = user.get('streak_count', 0)
     streak_icon, streak_message = resolve_streak_badge(streak_count)
     core_message, check_in_lines, quick_reply_lines = extract_interactive_sections(message)
     ci_defaults, qr_defaults = generate_interactive_defaults(streak_count, user.get('goals', ''))
@@ -1819,10 +2263,14 @@ async def send_motivation_now(email: str):
         quick_reply_lines=quick_reply_lines,
     )
     
+    # Create updated user with new streak for subject line generation
+    updated_user = user.copy()
+    updated_user['streak_count'] = streak_count
+    
     subject_line = await compose_subject_line(
         personality,
         "instant_boost",
-        user,
+        updated_user,  # Use updated user with new streak
         used_fallback,
         research_snippet=research_snippet
     )
@@ -1835,11 +2283,13 @@ async def send_motivation_now(email: str):
             {
                 "$set": {
                     "last_email_sent": sent_dt.isoformat(),
-                    "last_active": sent_dt.isoformat()
+                    "last_active": sent_dt.isoformat(),
+                    "streak_count": streak_count
                 },
                 "$inc": {"total_messages_received": 1}
             }
         )
+        logger.info(f"✅ Email sent to {email} (send-now) - Streak updated to {streak_count} days")
         await record_email_log(
             email=email,
             subject=subject_line,
@@ -1907,6 +2357,171 @@ async def get_message_history(email: str, limit: int = 50):
                 msg['sent_at'] = sent_at.isoformat()
     
     return {"messages": messages, "total": len(messages)}
+
+@api_router.get("/users/{email}/streak-status")
+async def get_streak_status(email: str):
+    """Get current streak status and last email sent date"""
+    try:
+        user = await db.users.find_one({"email": email}, {"_id": 0, "streak_count": 1, "last_email_sent": 1, "total_messages_received": 1})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get most recent message
+        last_message = await db.message_history.find_one(
+            {"email": email},
+            {"sent_at": 1, "created_at": 1, "streak_at_time": 1},
+            sort=[("sent_at", -1)]
+        )
+        
+        last_message_streak = None
+        last_message_date = None
+        if last_message:
+            last_message_streak = last_message.get("streak_at_time")
+            last_message_date = last_message.get("sent_at") or last_message.get("created_at")
+            # Convert to ISO string if datetime
+            if isinstance(last_message_date, datetime):
+                last_message_date = last_message_date.isoformat()
+        
+        return {
+            "current_streak": user.get("streak_count", 0),
+            "last_email_sent": user.get("last_email_sent"),
+            "total_messages": user.get("total_messages_received", 0),
+            "last_message_streak": last_message_streak,
+            "last_message_date": last_message_date
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting streak status for {email}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving streak status: {str(e)}")
+
+@api_router.post("/users/{email}/recalculate-streak")
+async def recalculate_streak_from_history(email: str):
+    """Recalculate streak count based on message history (useful for fixing data issues)"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get all messages sorted by date (most recent first, then we'll reverse)
+    messages = await db.message_history.find(
+        {"email": email},
+        {"sent_at": 1, "created_at": 1, "streak_at_time": 1}
+    ).sort("sent_at", -1).to_list(1000)  # Most recent first
+    
+    if not messages:
+        # No messages - reset streak to 0
+        await db.users.update_one(
+            {"email": email},
+            {"$set": {"streak_count": 0, "last_email_sent": None}}
+        )
+        return {"streak_count": 0, "message": "No messages found, streak reset to 0"}
+    
+    # Calculate streak from message history dates (more reliable than streak_at_time)
+    # The streak_at_time might be incorrect from previous bugs, so we recalculate from dates
+    most_recent = messages[0]
+    
+    # Check if we should use streak_at_time (only if it seems reasonable)
+    # If all messages have streak_at_time=1, it's likely wrong, so recalculate from dates
+    use_streak_at_time = False
+    if most_recent.get('streak_at_time') is not None:
+        # Check if streak_at_time values are consistent and make sense
+        # If most recent is 1 but we have messages on different days, recalculate
+        recent_streak = most_recent.get('streak_at_time', 0)
+        if recent_streak > 1:  # Only trust if it's > 1
+            use_streak_at_time = True
+    
+    if use_streak_at_time:
+        # Use the streak_at_time from the most recent message
+        streak_count = most_recent.get('streak_at_time', 0)
+        logger.info(f"Using streak_at_time from most recent message: {streak_count}")
+    else:
+        # Calculate streak from message history dates
+        # Reverse to process chronologically
+        messages_chrono = list(reversed(messages))
+        streak_count = 0
+        last_date = None
+        consecutive_days = 0
+        
+        for msg in messages_chrono:
+            sent_at = msg.get('sent_at') or msg.get('created_at')
+            if not sent_at:
+                continue
+                
+            if isinstance(sent_at, str):
+                try:
+                    msg_date = datetime.fromisoformat(sent_at.replace('Z', '+00:00')).date()
+                except:
+                    try:
+                        # Try alternative format
+                        msg_date = datetime.fromisoformat(sent_at).date()
+                    except:
+                        logger.warning(f"Could not parse date: {sent_at}")
+                        continue
+            elif isinstance(sent_at, datetime):
+                msg_date = sent_at.date()
+            else:
+                continue
+            
+            if last_date is None:
+                # First message
+                last_date = msg_date
+                consecutive_days = 1
+                streak_count = 1
+            else:
+                days_diff = (msg_date - last_date).days
+                if days_diff == 0:
+                    # Same day - don't increment, keep the higher streak if available
+                    if msg.get('streak_at_time') and msg.get('streak_at_time') > streak_count:
+                        streak_count = msg.get('streak_at_time')
+                    continue
+                elif days_diff == 1:
+                    # Consecutive day
+                    consecutive_days += 1
+                    streak_count = consecutive_days
+                    last_date = msg_date
+                else:
+                    # Gap - reset
+                    consecutive_days = 1
+                    streak_count = 1
+                    last_date = msg_date
+        
+        logger.info(f"Calculated streak from dates: {streak_count}")
+    
+    # Get the most recent message date
+    last_message = messages[0]  # Most recent (already sorted)
+    last_sent = last_message.get('sent_at') or last_message.get('created_at')
+    if isinstance(last_sent, str):
+        try:
+            last_sent_dt = datetime.fromisoformat(last_sent.replace('Z', '+00:00'))
+        except:
+            try:
+                last_sent_dt = datetime.fromisoformat(last_sent)
+            except:
+                last_sent_dt = None
+    elif isinstance(last_sent, datetime):
+        last_sent_dt = last_sent
+    else:
+        last_sent_dt = None
+    
+    # Update user with recalculated streak
+    update_data = {"streak_count": streak_count}
+    if last_sent_dt:
+        update_data["last_email_sent"] = last_sent_dt.isoformat()
+    
+    await db.users.update_one(
+        {"email": email},
+        {"$set": update_data}
+    )
+    
+    logger.info(f"✅ Recalculated streak for {email}: {streak_count} days (from {len(messages)} messages)")
+    
+    return {
+        "streak_count": streak_count,
+        "total_messages": len(messages),
+        "last_email_sent": last_sent_dt.isoformat() if last_sent_dt else None,
+        "message": f"Streak recalculated from message history",
+        "method": "streak_at_time" if use_streak_at_time else "date_calculation"
+    }
 
 @api_router.post("/users/{email}/feedback")
 async def submit_feedback(email: str, feedback: MessageFeedbackCreate):
@@ -2053,6 +2668,20 @@ async def get_user_analytics(email: str):
     total_feedback = len(feedbacks)
     engagement_rate = (total_feedback / total_messages * 100) if total_messages > 0 else 0
     
+    # Check for new achievements
+    unlocked = await check_and_unlock_achievements(email, user, total_feedback)
+    
+    # Get user achievements
+    user_achievements = user.get("achievements", [])
+    achievements_dict = await get_achievements_from_db()
+    achievements_list = []
+    for ach_id in user_achievements:
+        if ach_id in achievements_dict:
+            achievements_list.append({
+                **achievements_dict[ach_id],
+                "unlocked": True
+            })
+    
     analytics = UserAnalytics(
         email=email,
         streak_count=user.get('streak_count', 0),
@@ -2064,7 +2693,12 @@ async def get_user_analytics(email: str):
         personality_stats=personality_stats
     )
     
-    return analytics
+    # Convert to dict and add achievements
+    result = analytics.model_dump()
+    result["achievements"] = achievements_list
+    result["new_achievements"] = unlocked
+    
+    return result
 
 # Personality Management Routes
 @api_router.post("/users/{email}/personalities")
@@ -2099,17 +2733,547 @@ async def remove_personality(email: str, personality_id: str):
     
     await db.users.update_one(
         {"email": email},
-        {"$set": {"personalities": personalities, "current_personality_index": 0}}
+        {"$set": {"personalities": personalities}}
     )
     
     return {"status": "success", "message": "Personality removed"}
 
-@api_router.put("/users/{email}/personalities/{personality_id}")
-async def update_personality(email: str, personality_id: str, updates: dict):
-    """Update a personality"""
+# ============================================================================
+# FEATURE 1: GAMIFICATION & ACHIEVEMENTS
+# ============================================================================
+
+@api_router.get("/users/{email}/achievements")
+async def get_user_achievements(email: str):
+    """Get all achievements for a user"""
     user = await db.users.find_one({"email": email}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    
+    user_achievements = user.get("achievements", [])
+    achievements_dict = await get_achievements_from_db()
+    unlocked = []
+    locked = []
+    
+    for ach_id, achievement in achievements_dict.items():
+        ach_data = {**achievement, "unlocked": ach_id in user_achievements}
+        if ach_id in user_achievements:
+            unlocked.append(ach_data)
+        else:
+            locked.append(ach_data)
+    
+    return {
+        "unlocked": unlocked,
+        "locked": locked,
+        "total_unlocked": len(unlocked),
+        "total_available": len(achievements_dict)
+    }
+
+# ============================================================================
+# FEATURE 3: MESSAGE ENHANCEMENTS (Favorites, Collections)
+# ============================================================================
+
+@api_router.post("/users/{email}/messages/{message_id}/favorite")
+async def toggle_message_favorite(email: str, message_id: str):
+    """Toggle favorite status for a message"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Verify message exists
+    message = await db.message_history.find_one({"id": message_id, "email": email})
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+    
+    favorites = user.get("favorite_messages", [])
+    is_favorite = message_id in favorites
+    
+    if is_favorite:
+        favorites.remove(message_id)
+        action = "removed"
+    else:
+        favorites.append(message_id)
+        action = "added"
+    
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"favorite_messages": favorites}}
+    )
+    
+    await tracker.log_user_activity(
+        email=email,
+        action_type="message_favorite_toggled",
+        action_category="user_action",
+        details={"message_id": message_id, "action": action}
+    )
+    
+    return {"status": "success", "is_favorite": not is_favorite, "action": action}
+
+@api_router.get("/users/{email}/messages/favorites")
+async def get_favorite_messages(email: str):
+    """Get all favorite messages"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    favorites = user.get("favorite_messages", [])
+    messages = await db.message_history.find(
+        {"id": {"$in": favorites}, "email": email},
+        {"_id": 0}
+    ).sort("sent_at", -1).to_list(100)
+    
+    return {"messages": messages, "count": len(messages)}
+
+@api_router.post("/users/{email}/collections")
+async def create_collection(email: str, collection: dict):
+    """Create a new message collection"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    collections = user.get("message_collections", {})
+    collection_id = str(uuid.uuid4())
+    collection_name = collection.get("name", "Untitled Collection")
+    
+    collections[collection_id] = {
+        "id": collection_id,
+        "name": collection_name,
+        "description": collection.get("description", ""),
+        "message_ids": collection.get("message_ids", []),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"message_collections": collections}}
+    )
+    
+    return {"status": "success", "collection_id": collection_id, "collection": collections[collection_id]}
+
+@api_router.get("/users/{email}/collections")
+async def get_collections(email: str):
+    """Get all message collections"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    collections = user.get("message_collections", {})
+    return {"collections": list(collections.values())}
+
+@api_router.put("/users/{email}/collections/{collection_id}")
+async def update_collection(email: str, collection_id: str, collection: dict):
+    """Update a message collection"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    collections = user.get("message_collections", {})
+    if collection_id not in collections:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    
+    if "name" in collection:
+        collections[collection_id]["name"] = collection["name"]
+    if "description" in collection:
+        collections[collection_id]["description"] = collection["description"]
+    if "message_ids" in collection:
+        collections[collection_id]["message_ids"] = collection["message_ids"]
+    
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"message_collections": collections}}
+    )
+    
+    return {"status": "success", "collection": collections[collection_id]}
+
+@api_router.delete("/users/{email}/collections/{collection_id}")
+async def delete_collection(email: str, collection_id: str):
+    """Delete a message collection"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    collections = user.get("message_collections", {})
+    if collection_id not in collections:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    
+    del collections[collection_id]
+    
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"message_collections": collections}}
+    )
+    
+    return {"status": "success", "message": "Collection deleted"}
+
+# ============================================================================
+# FEATURE 2: GOAL PROGRESS TRACKING
+# ============================================================================
+
+@api_router.post("/users/{email}/goals/progress")
+async def update_goal_progress(email: str, goal_data: dict):
+    """Update or create goal progress"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    goal_progress = user.get("goal_progress", {})
+    goal_id = goal_data.get("goal_id") or str(uuid.uuid4())
+    
+    goal_progress[goal_id] = {
+        "goal_id": goal_id,
+        "goal_text": goal_data.get("goal_text", ""),
+        "target_date": goal_data.get("target_date"),
+        "progress_percentage": goal_data.get("progress_percentage", 0.0),
+        "milestones": goal_data.get("milestones", []),
+        "completed": goal_data.get("completed", False),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Check if goal completed (for achievement)
+    if goal_data.get("completed") and not goal_progress[goal_id].get("was_completed", False):
+        await check_and_unlock_achievements(email, user, 0)
+        goal_progress[goal_id]["was_completed"] = True
+    
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"goal_progress": goal_progress}}
+    )
+    
+    return {"status": "success", "goal": goal_progress[goal_id]}
+
+@api_router.get("/users/{email}/goals/progress")
+async def get_goal_progress(email: str):
+    """Get all goal progress"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    goal_progress = user.get("goal_progress", {})
+    return {"goals": list(goal_progress.values())}
+
+# ============================================================================
+# FEATURE 4: EXPORT & SHARING
+# ============================================================================
+
+@api_router.get("/users/{email}/export/messages")
+async def export_messages(email: str, format: str = "json"):
+    """Export messages in various formats"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    messages = await db.message_history.find(
+        {"email": email},
+        {"_id": 0}
+    ).sort("sent_at", -1).to_list(1000)
+    
+    if format == "json":
+        return {"messages": messages, "count": len(messages)}
+    elif format == "csv":
+        import csv
+        import io
+        output = io.StringIO()
+        if messages:
+            writer = csv.DictWriter(output, fieldnames=["id", "email", "message", "subject", "sent_at", "personality"])
+            writer.writeheader()
+            for msg in messages:
+                writer.writerow({
+                    "id": msg.get("id", ""),
+                    "email": msg.get("email", ""),
+                    "message": msg.get("message", "").replace("\n", " "),
+                    "subject": msg.get("subject", ""),
+                    "sent_at": msg.get("sent_at", ""),
+                    "personality": msg.get("personality", {}).get("value", "") if msg.get("personality") else ""
+                })
+        return {"content": output.getvalue(), "format": "csv"}
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported format. Use 'json' or 'csv'")
+
+# ============================================================================
+# FEATURE 7: CONTENT PERSONALIZATION
+# ============================================================================
+
+@api_router.put("/users/{email}/preferences")
+async def update_content_preferences(email: str, preferences: dict):
+    """Update user content preferences"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    content_prefs = user.get("content_preferences", {})
+    content_prefs.update(preferences)
+    
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"content_preferences": content_prefs}}
+    )
+    
+    return {"status": "success", "preferences": content_prefs}
+
+@api_router.get("/users/{email}/preferences")
+async def get_content_preferences(email: str):
+    """Get user content preferences"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return {"preferences": user.get("content_preferences", {})}
+
+# ============================================================================
+# FEATURE 5: ADVANCED ANALYTICS (Weekly/Monthly Reports)
+# ============================================================================
+
+@api_router.get("/users/{email}/analytics/weekly")
+async def get_weekly_analytics(email: str, weeks: int = 4):
+    """Get weekly analytics report"""
+    from datetime import timedelta
+    
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(weeks=weeks)
+    
+    messages = await db.message_history.find({
+        "email": email,
+        "sent_at": {"$gte": start_date.isoformat(), "$lte": end_date.isoformat()}
+    }).to_list(1000)
+    
+    feedbacks = await db.message_feedback.find({
+        "email": email,
+        "created_at": {"$gte": start_date.isoformat(), "$lte": end_date.isoformat()}
+    }).to_list(1000)
+    
+    return {
+        "period": f"{weeks} weeks",
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "total_messages": len(messages),
+        "total_feedback": len(feedbacks),
+        "avg_rating": sum(f['rating'] for f in feedbacks) / len(feedbacks) if feedbacks else None,
+        "streak_count": user.get("streak_count", 0)
+    }
+
+@api_router.get("/users/{email}/analytics/monthly")
+async def get_monthly_analytics(email: str, months: int = 6):
+    """Get monthly analytics report"""
+    from datetime import timedelta
+    
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(days=months * 30)
+    
+    messages = await db.message_history.find({
+        "email": email,
+        "sent_at": {"$gte": start_date.isoformat(), "$lte": end_date.isoformat()}
+    }).to_list(1000)
+    
+    return {
+        "period": f"{months} months",
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "total_messages": len(messages),
+        "streak_count": user.get("streak_count", 0)
+    }
+
+# ============================================================================
+# FEATURE 6: ENGAGEMENT FEATURES (Daily Check-ins, Reflection Journal)
+# ============================================================================
+
+@api_router.post("/users/{email}/check-ins")
+async def create_check_in(email: str, check_in: dict):
+    """Create a daily check-in"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    check_in_id = str(uuid.uuid4())
+    check_in_data = {
+        "id": check_in_id,
+        "email": email,
+        "date": check_in.get("date", datetime.now(timezone.utc).isoformat()),
+        "mood": check_in.get("mood"),
+        "energy_level": check_in.get("energy_level"),
+        "reflection": check_in.get("reflection", ""),
+        "gratitude": check_in.get("gratitude", []),
+        "goals_today": check_in.get("goals_today", []),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.check_ins.insert_one(check_in_data)
+    
+    return {"status": "success", "check_in": check_in_data}
+
+@api_router.get("/users/{email}/check-ins")
+async def get_check_ins(email: str, limit: int = 30):
+    """Get user check-ins"""
+    check_ins = await db.check_ins.find(
+        {"email": email},
+        {"_id": 0}
+    ).sort("date", -1).to_list(limit)
+    
+    return {"check_ins": check_ins, "count": len(check_ins)}
+
+@api_router.post("/users/{email}/reflections")
+async def create_reflection(email: str, reflection: dict):
+    """Create a reflection entry"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    reflection_id = str(uuid.uuid4())
+    reflection_data = {
+        "id": reflection_id,
+        "email": email,
+        "message_id": reflection.get("message_id"),
+        "content": reflection.get("content", ""),
+        "tags": reflection.get("tags", []),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.reflections.insert_one(reflection_data)
+    
+    return {"status": "success", "reflection": reflection_data}
+
+@api_router.get("/users/{email}/reflections")
+async def get_reflections(email: str, limit: int = 50):
+    """Get user reflections"""
+    reflections = await db.reflections.find(
+        {"email": email},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(limit)
+    
+    return {"reflections": reflections, "count": len(reflections)}
+
+# ============================================================================
+# FEATURE 9: SOCIAL FEATURES (Anonymous Insights, Community Stats)
+# ============================================================================
+
+@api_router.get("/community/stats")
+async def get_community_stats():
+    """Get anonymous community statistics"""
+    total_users = await db.users.count_documents({"active": True})
+    total_messages = await db.message_history.count_documents({})
+    total_feedback = await db.message_feedback.count_documents({})
+    
+    # Get average streak
+    users = await db.users.find({"active": True}, {"streak_count": 1}).to_list(1000)
+    avg_streak = sum(u.get("streak_count", 0) for u in users) / len(users) if users else 0
+    
+    # Get most popular personalities
+    feedbacks = await db.message_feedback.find({}).to_list(1000)
+    personality_counts = {}
+    for fb in feedbacks:
+        pers = fb.get("personality", {}).get("value", "Unknown")
+        personality_counts[pers] = personality_counts.get(pers, 0) + 1
+    
+    popular_personalities = sorted(personality_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    
+    return {
+        "total_active_users": total_users,
+        "total_messages_sent": total_messages,
+        "total_feedback_given": total_feedback,
+        "average_streak": round(avg_streak, 1),
+        "popular_personalities": [{"name": name, "count": count} for name, count in popular_personalities]
+    }
+
+@api_router.get("/community/message-insights/{message_id}")
+async def get_message_insights(message_id: str):
+    """Get anonymous insights for a specific message"""
+    feedbacks = await db.message_feedback.find({"message_id": message_id}).to_list(100)
+    
+    if not feedbacks:
+        return {"message": "No feedback available for this message"}
+    
+    ratings = [f.get("rating", 0) for f in feedbacks]
+    avg_rating = sum(ratings) / len(ratings) if ratings else 0
+    
+    return {
+        "total_ratings": len(feedbacks),
+        "average_rating": round(avg_rating, 1),
+        "rating_distribution": {
+            "5": sum(1 for r in ratings if r == 5),
+            "4": sum(1 for r in ratings if r == 4),
+            "3": sum(1 for r in ratings if r == 3),
+            "2": sum(1 for r in ratings if r == 2),
+            "1": sum(1 for r in ratings if r == 1)
+        }
+    }
+
+# ============================================================================
+# FEATURE 10: ADMIN ENHANCEMENTS (A/B Testing, Content Performance)
+# ============================================================================
+
+@api_router.get("/admin/content-performance", dependencies=[Depends(verify_admin)])
+async def get_content_performance(admin_token: str):
+    """Get content performance analytics"""
+    messages = await db.message_history.find({}).to_list(1000)
+    feedbacks = await db.message_feedback.find({}).to_list(1000)
+    
+    # Group by personality
+    personality_performance = {}
+    for msg in messages:
+        pers = msg.get("personality", {}).get("value", "Unknown") if msg.get("personality") else "Unknown"
+        if pers not in personality_performance:
+            personality_performance[pers] = {"total": 0, "ratings": []}
+        personality_performance[pers]["total"] += 1
+    
+    # Add ratings
+    for fb in feedbacks:
+        pers = fb.get("personality", {}).get("value", "Unknown") if fb.get("personality") else "Unknown"
+        if pers in personality_performance:
+            personality_performance[pers]["ratings"].append(fb.get("rating", 0))
+    
+    # Calculate averages
+    for pers in personality_performance:
+        ratings = personality_performance[pers]["ratings"]
+        personality_performance[pers]["avg_rating"] = sum(ratings) / len(ratings) if ratings else 0
+        personality_performance[pers]["feedback_count"] = len(ratings)
+    
+    return {"personality_performance": personality_performance}
+
+@api_router.get("/admin/user-journey/{email}", dependencies=[Depends(verify_admin)])
+async def get_user_journey(email: str, admin_token: str):
+    """Get user journey mapping"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get all activities
+    activities = await db.activity_logs.find(
+        {"user_email": email},
+        {"_id": 0}
+    ).sort("timestamp", 1).to_list(1000)
+    
+    # Get messages
+    messages = await db.message_history.find(
+        {"email": email},
+        {"_id": 0}
+    ).sort("sent_at", 1).to_list(1000)
+    
+    # Get feedback
+    feedbacks = await db.message_feedback.find(
+        {"email": email},
+        {"_id": 0}
+    ).sort("created_at", 1).to_list(1000)
+    
+    return {
+        "user": {
+            "email": email,
+            "created_at": user.get("created_at"),
+            "last_active": user.get("last_active"),
+            "streak_count": user.get("streak_count", 0),
+            "total_messages": user.get("total_messages_received", 0)
+        },
+        "timeline": {
+            "activities": activities,
+            "messages": messages,
+            "feedbacks": feedbacks
+        }
+    }
     
     personalities = user.get('personalities', [])
     for i, p in enumerate(personalities):
@@ -2790,6 +3954,385 @@ async def admin_get_user_activity_summary(limit: int = 50):
     }
 
 # ============================================================================
+# BULK OPERATIONS
+# ============================================================================
+
+class BulkUserActionRequest(BaseModel):
+    user_emails: List[str]
+    action: Literal["activate", "deactivate", "pause_schedule", "resume_schedule", "delete"]
+
+@api_router.post("/admin/bulk/users", dependencies=[Depends(verify_admin)])
+async def admin_bulk_user_action(request: BulkUserActionRequest):
+    """Perform bulk actions on multiple users"""
+    results = {"success": [], "failed": []}
+    
+    for email in request.user_emails:
+        try:
+            user = await db.users.find_one({"email": email}, {"_id": 0})
+            if not user:
+                results["failed"].append({"email": email, "error": "User not found"})
+                continue
+            
+            update_data = {}
+            if request.action == "activate":
+                update_data["active"] = True
+            elif request.action == "deactivate":
+                update_data["active"] = False
+            elif request.action == "pause_schedule":
+                update_data["schedule.paused"] = True
+            elif request.action == "resume_schedule":
+                update_data["schedule.paused"] = False
+            elif request.action == "delete":
+                # Soft delete
+                update_data["active"] = False
+                await version_tracker.soft_delete(
+                    collection="users",
+                    document_id=user.get("id"),
+                    document_data=user,
+                    deleted_by="admin",
+                    reason="Bulk delete operation"
+                )
+            
+            if update_data:
+                await db.users.update_one({"email": email}, {"$set": update_data})
+            
+            results["success"].append({"email": email, "action": request.action})
+            
+            # Log activity
+            await tracker.log_admin_activity(
+                action_type="bulk_user_action",
+                details={
+                    "email": email,
+                    "action": request.action,
+                    "bulk_count": len(request.user_emails)
+                }
+            )
+        except Exception as e:
+            results["failed"].append({"email": email, "error": str(e)})
+    
+    # Reschedule emails if schedule was changed
+    if request.action in ["pause_schedule", "resume_schedule"]:
+        await schedule_user_emails()
+    
+    return {
+        "total": len(request.user_emails),
+        "success_count": len(results["success"]),
+        "failed_count": len(results["failed"]),
+        "results": results
+    }
+
+class BulkEmailRequest(BaseModel):
+    user_emails: List[str]
+    subject: str
+    message: str
+
+@api_router.post("/admin/bulk/email", dependencies=[Depends(verify_admin)])
+async def admin_bulk_send_email(request: BulkEmailRequest):
+    """Send email to multiple users"""
+    results = {"success": [], "failed": []}
+    
+    for email in request.user_emails:
+        try:
+            success, error = await send_email(
+                to_email=email,
+                subject=request.subject,
+                html_content=request.message
+            )
+            if success:
+                results["success"].append({"email": email})
+                await record_email_log(
+                    email=email,
+                    subject=request.subject,
+                    status="success",
+                    sent_dt=datetime.now(timezone.utc)
+                )
+            else:
+                results["failed"].append({"email": email, "error": error})
+                await record_email_log(
+                    email=email,
+                    subject=request.subject,
+                    status="failed",
+                    sent_dt=datetime.now(timezone.utc),
+                    error_message=error
+                )
+        except Exception as e:
+            results["failed"].append({"email": email, "error": str(e)})
+    
+    await tracker.log_admin_activity(
+        action_type="bulk_email_send",
+        details={
+            "total_recipients": len(request.user_emails),
+            "success_count": len(results["success"]),
+            "failed_count": len(results["failed"])
+        }
+    )
+    
+    return {
+        "total": len(request.user_emails),
+        "success_count": len(results["success"]),
+        "failed_count": len(results["failed"]),
+        "results": results
+    }
+
+# ============================================================================
+# USER SEGMENTATION
+# ============================================================================
+
+@api_router.get("/admin/users/segments", dependencies=[Depends(verify_admin)])
+async def admin_get_user_segments(
+    engagement_level: Optional[Literal["high", "medium", "low"]] = None,
+    min_streak: Optional[int] = None,
+    max_streak: Optional[int] = None,
+    min_rating: Optional[float] = None,
+    personality: Optional[str] = None,
+    active_only: bool = True
+):
+    """Get segmented users based on various criteria"""
+    query = {}
+    
+    if active_only:
+        query["active"] = True
+    
+    if min_streak is not None or max_streak is not None:
+        query["streak_count"] = {}
+        if min_streak is not None:
+            query["streak_count"]["$gte"] = min_streak
+        if max_streak is not None:
+            query["streak_count"]["$lte"] = max_streak
+    
+    if personality:
+        query["personalities.value"] = personality
+    
+    users = await db.users.find(query, {"_id": 0}).to_list(1000)
+    
+    # Filter by engagement level
+    if engagement_level:
+        segmented_users = []
+        for user in users:
+            total_messages = user.get("total_messages_received", 0)
+            feedback_count = await db.message_feedback.count_documents({"email": user["email"]})
+            engagement_rate = (feedback_count / total_messages * 100) if total_messages > 0 else 0
+            
+            if engagement_level == "high" and engagement_rate >= 50:
+                segmented_users.append(user)
+            elif engagement_level == "medium" and 20 <= engagement_rate < 50:
+                segmented_users.append(user)
+            elif engagement_level == "low" and engagement_rate < 20:
+                segmented_users.append(user)
+        users = segmented_users
+    
+    # Filter by rating
+    if min_rating is not None:
+        rated_users = []
+        for user in users:
+            feedbacks = await db.message_feedback.find({"email": user["email"]}).to_list(100)
+            if feedbacks:
+                avg_rating = sum(f.get("rating", 0) for f in feedbacks) / len(feedbacks)
+                if avg_rating >= min_rating:
+                    rated_users.append(user)
+        users = rated_users
+    
+    # Add engagement metrics to each user
+    for user in users:
+        total_messages = user.get("total_messages_received", 0)
+        feedback_count = await db.message_feedback.count_documents({"email": user["email"]})
+        user["engagement_rate"] = round((feedback_count / total_messages * 100), 2) if total_messages > 0 else 0
+        
+        feedbacks = await db.message_feedback.find({"email": user["email"]}).to_list(100)
+        if feedbacks:
+            user["avg_rating"] = round(sum(f.get("rating", 0) for f in feedbacks) / len(feedbacks), 2)
+        else:
+            user["avg_rating"] = None
+    
+    return {
+        "total": len(users),
+        "users": users,
+        "filters": {
+            "engagement_level": engagement_level,
+            "min_streak": min_streak,
+            "max_streak": max_streak,
+            "min_rating": min_rating,
+            "personality": personality,
+            "active_only": active_only
+        }
+    }
+
+# ============================================================================
+# API COST TRACKING
+# ============================================================================
+
+@api_router.get("/admin/api-costs", dependencies=[Depends(verify_admin)])
+async def admin_get_api_costs(days: int = 30):
+    """Get API usage and estimated costs"""
+    from datetime import timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    
+    # OpenAI API usage
+    openai_events = await db.system_events.find({
+        "event_category": {"$in": ["llm", "openai"]},
+        "timestamp": {"$gte": cutoff}
+    }).to_list(10000)
+    
+    # Estimate costs (rough estimates)
+    # GPT-4: ~$0.03 per 1K input tokens, $0.06 per 1K output tokens
+    # GPT-3.5: ~$0.0015 per 1K input tokens, $0.002 per 1K output tokens
+    openai_cost = 0
+    openai_calls = len(openai_events)
+    
+    # Tavily API usage
+    tavily_events = await db.system_events.find({
+        "event_category": "tavily",
+        "timestamp": {"$gte": cutoff}
+    }).to_list(10000)
+    
+    # Tavily: ~$0.10 per search (estimate)
+    tavily_cost = len(tavily_events) * 0.10
+    tavily_calls = len(tavily_events)
+    
+    # Daily breakdown
+    daily_costs = {}
+    for event in openai_events + tavily_events:
+        event_date = event.get("timestamp", datetime.now(timezone.utc))
+        if isinstance(event_date, str):
+            event_date = datetime.fromisoformat(event_date.replace('Z', '+00:00'))
+        date_key = event_date.strftime("%Y-%m-%d")
+        
+        if date_key not in daily_costs:
+            daily_costs[date_key] = {"openai": 0, "tavily": 0, "total": 0}
+        
+        if event.get("event_category") in ["llm", "openai"]:
+            # Rough estimate: $0.01 per call
+            daily_costs[date_key]["openai"] += 0.01
+        elif event.get("event_category") == "tavily":
+            daily_costs[date_key]["tavily"] += 0.10
+        
+        daily_costs[date_key]["total"] = daily_costs[date_key]["openai"] + daily_costs[date_key]["tavily"]
+    
+    total_cost = openai_calls * 0.01 + tavily_cost
+    
+    return {
+        "period_days": days,
+        "openai": {
+            "calls": openai_calls,
+            "estimated_cost": round(openai_calls * 0.01, 2),
+            "cost_per_call": 0.01
+        },
+        "tavily": {
+            "calls": tavily_calls,
+            "estimated_cost": round(tavily_cost, 2),
+            "cost_per_call": 0.10
+        },
+        "total_cost": round(total_cost, 2),
+        "daily_breakdown": daily_costs
+    }
+
+# ============================================================================
+# ALERTS & NOTIFICATIONS
+# ============================================================================
+
+class AlertConfig(BaseModel):
+    alert_type: Literal["error_rate", "api_failure", "rate_limit", "low_engagement"]
+    threshold: float
+    enabled: bool = True
+    email_notification: bool = False
+
+class Achievement(BaseModel):
+    id: str
+    name: str
+    description: str
+    icon: str  # Emoji or icon identifier
+    category: str  # "streak", "messages", "engagement", "goals"
+    requirement: Dict[str, Any]  # Conditions to unlock
+    unlocked_at: Optional[datetime] = None
+
+class GoalProgress(BaseModel):
+    goal_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    goal_text: str
+    target_date: Optional[datetime] = None
+    progress_percentage: float = 0.0
+    milestones: List[Dict[str, Any]] = []
+    completed: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class MessageFavorite(BaseModel):
+    message_id: str
+    favorited_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class MessageCollection(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    description: Optional[str] = None
+    message_ids: List[str] = []
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+@api_router.get("/admin/alerts", dependencies=[Depends(verify_admin)])
+async def admin_get_alerts():
+    """Get current alert status"""
+    from datetime import timedelta
+    last_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+    
+    # Error rate alert
+    total_emails = await db.email_logs.count_documents({"sent_at": {"$gte": last_24h}})
+    failed_emails = await db.email_logs.count_documents({
+        "status": "failed",
+        "sent_at": {"$gte": last_24h}
+    })
+    error_rate = (failed_emails / total_emails * 100) if total_emails > 0 else 0
+    
+    # API failures
+    api_failures = await db.system_events.count_documents({
+        "event_category": {"$in": ["llm", "tavily", "openai"]},
+        "status": "failure",
+        "timestamp": {"$gte": last_24h}
+    })
+    
+    # Rate limit hits
+    rate_limits = await db.system_events.count_documents({
+        "event_type": {"$regex": "rate_limit", "$options": "i"},
+        "timestamp": {"$gte": last_24h}
+    })
+    
+    alerts = []
+    
+    if error_rate > 10:
+        alerts.append({
+            "type": "error_rate",
+            "severity": "high" if error_rate > 20 else "medium",
+            "message": f"Email error rate is {error_rate:.1f}% (threshold: 10%)",
+            "value": error_rate,
+            "threshold": 10
+        })
+    
+    if api_failures > 5:
+        alerts.append({
+            "type": "api_failure",
+            "severity": "high" if api_failures > 10 else "medium",
+            "message": f"{api_failures} API failures in last 24 hours",
+            "value": api_failures,
+            "threshold": 5
+        })
+    
+    if rate_limits > 0:
+        alerts.append({
+            "type": "rate_limit",
+            "severity": "high",
+            "message": f"{rate_limits} rate limit hits detected",
+            "value": rate_limits,
+            "threshold": 0
+        })
+    
+    return {
+        "alerts": alerts,
+        "total_alerts": len(alerts),
+        "critical_alerts": len([a for a in alerts if a["severity"] == "high"]),
+        "metrics": {
+            "error_rate": round(error_rate, 2),
+            "api_failures": api_failures,
+            "rate_limits": rate_limits
+        }
+    }
+
+# ============================================================================
 # REAL-TIME ANALYTICS & ACTIVITY TRACKING ENDPOINTS
 # ============================================================================
 
@@ -3050,37 +4593,103 @@ async def schedule_user_emails():
                 # Create job ID
                 job_id = f"user_{email.replace('@', '_at_').replace('.', '_')}"
                 
-                # Remove existing job if any
+                # Remove all existing jobs for this user (handles multiple times/days/dates)
                 try:
+                    # Remove main job
                     scheduler.remove_job(job_id)
                 except:
                     pass
+                # Remove any sub-jobs (for multiple times/days/dates)
+                for existing_job in scheduler.get_jobs():
+                    if existing_job.id.startswith(job_id + "_"):
+                        try:
+                            scheduler.remove_job(existing_job.id)
+                        except:
+                            pass
                 
                 # Add new job based on frequency with timezone
                 # FIXED: Now properly executes async function from scheduler
                 if frequency == 'daily':
-                    scheduler.add_job(
-                        create_email_job,
-                        CronTrigger(hour=hour, minute=minute, timezone=tz),
-                        args=[email],
-                        id=job_id,
-                        replace_existing=True
-                    )
+                    # Handle multiple times per day
+                    for time_idx, time_str in enumerate(times):
+                        time_parts = time_str.split(':')
+                        t_hour = int(time_parts[0])
+                        t_minute = int(time_parts[1])
+                        job_id_with_time = f"{job_id}_time_{time_idx}" if len(times) > 1 else job_id
+                        scheduler.add_job(
+                            create_email_job,
+                            CronTrigger(hour=t_hour, minute=t_minute, timezone=tz),
+                            args=[email],
+                            id=job_id_with_time,
+                            replace_existing=True
+                        )
                 elif frequency == 'weekly':
-                    # Default to Monday if no days specified
-                    day_of_week = 0  # Monday
-                    scheduler.add_job(
-                        create_email_job,
-                        CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute, timezone=tz),
-                        args=[email],
-                        id=job_id,
-                        replace_existing=True
-                    )
+                    # Use custom_days if specified, otherwise default to Monday
+                    custom_days = schedule.get('custom_days', [])
+                    if custom_days:
+                        # Map day names to cron day_of_week (0=Monday, 6=Sunday)
+                        day_map = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 
+                                  'friday': 4, 'saturday': 5, 'sunday': 6}
+                        for day_name in custom_days:
+                            day_num = day_map.get(day_name.lower(), 0)
+                            job_id_with_day = f"{job_id}_day_{day_num}" if len(custom_days) > 1 else job_id
+                            scheduler.add_job(
+                                create_email_job,
+                                CronTrigger(day_of_week=day_num, hour=hour, minute=minute, timezone=tz),
+                                args=[email],
+                                id=job_id_with_day,
+                                replace_existing=True
+                            )
+                    else:
+                        # Default to Monday
+                        scheduler.add_job(
+                            create_email_job,
+                            CronTrigger(day_of_week=0, hour=hour, minute=minute, timezone=tz),
+                            args=[email],
+                            id=job_id,
+                            replace_existing=True
+                        )
                 elif frequency == 'monthly':
-                    # First day of month
+                    # Use monthly_dates if specified, otherwise default to 1st
+                    monthly_dates = schedule.get('monthly_dates', [])
+                    valid_dates = []
+                    if monthly_dates:
+                        for date_str in monthly_dates:
+                            try:
+                                day_of_month = int(date_str)
+                                if 1 <= day_of_month <= 31:
+                                    valid_dates.append(day_of_month)
+                            except (ValueError, TypeError):
+                                logger.warning(f"Invalid monthly date {date_str} for {email}, skipping")
+                    
+                    if valid_dates:
+                        for day_of_month in valid_dates:
+                            job_id_with_date = f"{job_id}_date_{day_of_month}" if len(valid_dates) > 1 else job_id
+                            scheduler.add_job(
+                                create_email_job,
+                                CronTrigger(day=day_of_month, hour=hour, minute=minute, timezone=tz),
+                                args=[email],
+                                id=job_id_with_date,
+                                replace_existing=True
+                            )
+                    else:
+                        # Default to 1st of month if no valid dates
+                        scheduler.add_job(
+                            create_email_job,
+                            CronTrigger(day=1, hour=hour, minute=minute, timezone=tz),
+                            args=[email],
+                            id=job_id,
+                            replace_existing=True
+                        )
+                elif frequency == 'custom':
+                    # Custom interval: every N days
+                    interval = schedule.get('custom_interval', 1)
+                    if interval < 1:
+                        interval = 1
+                    # Use IntervalTrigger for custom intervals
                     scheduler.add_job(
                         create_email_job,
-                        CronTrigger(day=1, hour=hour, minute=minute, timezone=tz),
+                        IntervalTrigger(days=interval, start_date=datetime.now(tz).replace(hour=hour, minute=minute, second=0)),
                         args=[email],
                         id=job_id,
                         replace_existing=True
@@ -3139,6 +4748,422 @@ async def get_deleted_data(limit: int = 100):
     ).sort("deleted_at", -1).limit(limit).to_list(limit)
     return {"deleted_items": deleted, "count": len(deleted)}
 
+# ============================================================================
+# ADMIN ACHIEVEMENT MANAGEMENT
+# ============================================================================
+
+@api_router.get("/admin/achievements", dependencies=[Depends(verify_admin)])
+async def admin_get_all_achievements(include_inactive: bool = False):
+    """Get all achievements (admin only)"""
+    try:
+        query = {} if include_inactive else {"active": True}
+        achievements = await db.achievements.find(query, {"_id": 0}).sort("priority", 1).to_list(200)
+        
+        logger.info(f"Admin achievements request: include_inactive={include_inactive}, found {len(achievements)} achievements")
+        
+        return {
+            "achievements": achievements,
+            "total": len(achievements),
+            "active": len([a for a in achievements if a.get("active", True)])
+        }
+    except Exception as e:
+        logger.error(f"Error fetching admin achievements: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch achievements: {str(e)}")
+
+@api_router.post("/admin/achievements", dependencies=[Depends(verify_admin)])
+async def admin_create_achievement(achievement: dict):
+    """Create a new achievement (admin only)"""
+    # Validate required fields
+    required_fields = ["id", "name", "description", "icon_name", "category", "requirement"]
+    for field in required_fields:
+        if field not in achievement:
+            raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+    
+    # Check if achievement ID already exists
+    existing = await db.achievements.find_one({"id": achievement["id"]})
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Achievement with ID '{achievement['id']}' already exists")
+    
+    # Add metadata
+    achievement["created_at"] = datetime.now(timezone.utc).isoformat()
+    achievement["updated_at"] = datetime.now(timezone.utc).isoformat()
+    achievement["active"] = achievement.get("active", True)
+    achievement["priority"] = achievement.get("priority", 1)
+    achievement["show_on_home"] = achievement.get("show_on_home", False)
+    
+    await db.achievements.insert_one(achievement)
+    
+    await tracker.log_admin_activity(
+        action_type="achievement_created",
+        admin_email="admin",
+        details={"achievement_id": achievement["id"], "name": achievement["name"]}
+    )
+    
+    return {"status": "success", "message": "Achievement created", "achievement": achievement}
+
+@api_router.put("/admin/achievements/{achievement_id}", dependencies=[Depends(verify_admin)])
+async def admin_update_achievement(achievement_id: str, achievement_data: dict):
+    """Update an existing achievement (admin only)"""
+    existing = await db.achievements.find_one({"id": achievement_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Achievement not found")
+    
+    # Don't allow changing the ID
+    if "id" in achievement_data and achievement_data["id"] != achievement_id:
+        raise HTTPException(status_code=400, detail="Cannot change achievement ID")
+    
+    # Update fields
+    update_data = {
+        "$set": {
+            **achievement_data,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+    }
+    
+    await db.achievements.update_one({"id": achievement_id}, update_data)
+    
+    updated = await db.achievements.find_one({"id": achievement_id}, {"_id": 0})
+    
+    await tracker.log_admin_activity(
+        action_type="achievement_updated",
+        admin_email="admin",
+        details={"achievement_id": achievement_id, "changes": list(achievement_data.keys())}
+    )
+    
+    return {"status": "success", "message": "Achievement updated", "achievement": updated}
+
+@api_router.delete("/admin/achievements/{achievement_id}", dependencies=[Depends(verify_admin)])
+async def admin_delete_achievement(achievement_id: str, hard_delete: bool = False):
+    """Delete or deactivate an achievement (admin only)"""
+    existing = await db.achievements.find_one({"id": achievement_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Achievement not found")
+    
+    if hard_delete:
+        # Permanently delete
+        await db.achievements.delete_one({"id": achievement_id})
+        action = "deleted"
+    else:
+        # Soft delete (deactivate)
+        await db.achievements.update_one(
+            {"id": achievement_id},
+            {"$set": {"active": False, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        action = "deactivated"
+    
+    await tracker.log_admin_activity(
+        action_type="achievement_deleted",
+        admin_email="admin",
+        details={"achievement_id": achievement_id, "hard_delete": hard_delete}
+    )
+    
+    return {"status": "success", "message": f"Achievement {action}", "achievement_id": achievement_id}
+
+@api_router.post("/admin/users/{email}/achievements/{achievement_id}", dependencies=[Depends(verify_admin)])
+async def admin_assign_achievement_to_user(email: str, achievement_id: str):
+    """Assign an achievement to a specific user (admin only)"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Verify achievement exists
+    achievement = await db.achievements.find_one({"id": achievement_id, "active": True})
+    if not achievement:
+        raise HTTPException(status_code=404, detail="Achievement not found or inactive")
+    
+    # Get current achievements
+    user_achievements = user.get("achievements", [])
+    
+    # Check if already has this achievement
+    if achievement_id in user_achievements:
+        return {"status": "already_assigned", "message": "User already has this achievement"}
+    
+    # Add achievement with timestamp
+    achievement_unlock = {
+        "achievement_id": achievement_id,
+        "unlocked_at": datetime.now(timezone.utc).isoformat(),
+        "unlocked_by": "admin"
+    }
+    
+    # Update user
+    await db.users.update_one(
+        {"email": email},
+        {
+            "$push": {"achievements": achievement_id},
+            "$set": {"last_active": datetime.now(timezone.utc).isoformat()}
+        }
+    )
+    
+    await tracker.log_admin_activity(
+        action_type="achievement_assigned",
+        admin_email="admin",
+        details={"user_email": email, "achievement_id": achievement_id}
+    )
+    
+    return {
+        "status": "success",
+        "message": "Achievement assigned to user",
+        "achievement": achievement,
+        "unlocked_at": achievement_unlock["unlocked_at"]
+    }
+
+@api_router.delete("/admin/users/{email}/achievements/{achievement_id}", dependencies=[Depends(verify_admin)])
+async def admin_remove_achievement_from_user(email: str, achievement_id: str):
+    """Remove an achievement from a specific user (admin only)"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_achievements = user.get("achievements", [])
+    
+    if achievement_id not in user_achievements:
+        raise HTTPException(status_code=404, detail="User does not have this achievement")
+    
+    # Remove achievement
+    await db.users.update_one(
+        {"email": email},
+        {"$pull": {"achievements": achievement_id}}
+    )
+    
+    await tracker.log_admin_activity(
+        action_type="achievement_removed",
+        admin_email="admin",
+        details={"user_email": email, "achievement_id": achievement_id}
+    )
+    
+    return {"status": "success", "message": "Achievement removed from user"}
+
+@api_router.get("/admin/users/{email}/achievements", dependencies=[Depends(verify_admin)])
+async def admin_get_user_achievements(email: str):
+    """Get all achievements for a specific user (admin only)"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_achievements = user.get("achievements", [])
+    achievements_dict = await get_achievements_from_db()
+    
+    unlocked = []
+    for ach_id in user_achievements:
+        if ach_id in achievements_dict:
+            unlocked.append(achievements_dict[ach_id])
+    
+    return {
+        "user_email": email,
+        "unlocked_achievements": unlocked,
+        "total_unlocked": len(unlocked),
+        "achievement_ids": user_achievements
+    }
+
+@api_router.post("/admin/achievements/initialize", dependencies=[Depends(verify_admin)])
+async def admin_initialize_achievements():
+    """Manually trigger achievement initialization (admin only)"""
+    await initialize_achievements()
+    count = await db.achievements.count_documents({"active": True})
+    return {
+        "status": "success",
+        "message": "Achievements initialized",
+        "total_active_achievements": count
+    }
+
+@api_router.post("/admin/achievements/recalculate-streaks", dependencies=[Depends(verify_admin)])
+async def admin_recalculate_streaks(email: Optional[str] = None):
+    """Recalculate streaks for all users or a specific user based on message history"""
+    try:
+        if email:
+            users = [await db.users.find_one({"email": email}, {"_id": 0})]
+            if not users[0]:
+                raise HTTPException(status_code=404, detail="User not found")
+        else:
+            users = await db.users.find({"active": True}, {"_id": 0, "email": 1}).to_list(1000)
+        
+        updated_count = 0
+        results = []
+        
+        for user in users:
+            user_email = user["email"]
+            
+            # Get all messages for this user, sorted by date
+            messages = await db.message_history.find(
+                {"email": user_email},
+                {"_id": 0, "sent_at": 1, "created_at": 1}
+            ).sort("sent_at", 1).to_list(1000)
+            
+            if not messages:
+                continue
+            
+            # Extract unique dates when emails were sent
+            email_dates = set()
+            for msg in messages:
+                sent_at = msg.get("sent_at") or msg.get("created_at")
+                if sent_at:
+                    if isinstance(sent_at, str):
+                        try:
+                            dt = datetime.fromisoformat(sent_at.replace('Z', '+00:00'))
+                        except:
+                            dt = datetime.fromisoformat(sent_at)
+                    else:
+                        dt = sent_at
+                    email_dates.add(dt.date())
+            
+            # Calculate longest consecutive streak
+            if not email_dates:
+                continue
+            
+            sorted_dates = sorted(email_dates)
+            today = datetime.now(timezone.utc).date()
+            
+            # Calculate current active streak (from most recent date backwards)
+            most_recent_date = sorted_dates[-1]
+            days_since_last = (today - most_recent_date).days
+            
+            # If email was sent today or yesterday, calculate active streak
+            if days_since_last <= 1:
+                # Calculate streak backwards from most recent date
+                # Start from the most recent date and count backwards
+                current_streak = 0
+                expected_date = most_recent_date
+                
+                # Convert sorted_dates to a set for O(1) lookup
+                date_set = set(sorted_dates)
+                
+                # Count consecutive days backwards from most recent
+                while expected_date in date_set:
+                    current_streak += 1
+                    expected_date = expected_date - timedelta(days=1)
+                
+                # Ensure minimum streak of 1
+                current_streak = max(1, current_streak)
+            else:
+                # Gap of more than 1 day - streak is broken
+                current_streak = 1
+            
+            # Update user's streak
+            await db.users.update_one(
+                {"email": user_email},
+                {"$set": {"streak_count": current_streak}}
+            )
+            
+            # Calculate max streak for reporting
+            max_streak = 1
+            temp_streak = 1
+            for i in range(1, len(sorted_dates)):
+                days_diff = (sorted_dates[i] - sorted_dates[i-1]).days
+                if days_diff == 1:
+                    temp_streak += 1
+                    max_streak = max(max_streak, temp_streak)
+                else:
+                    temp_streak = 1
+            
+            results.append({
+                "email": user_email,
+                "old_streak": user.get("streak_count", 0),
+                "new_streak": current_streak,
+                "total_email_days": len(sorted_dates),
+                "max_streak": max_streak
+            })
+            updated_count += 1
+        
+        await tracker.log_admin_activity(
+            action_type="streaks_recalculated",
+            admin_email="admin",
+            details={"users_updated": updated_count, "email_filter": email}
+        )
+        
+        return {
+            "status": "success",
+            "message": f"Recalculated streaks for {updated_count} user(s)",
+            "results": results
+        }
+    except Exception as e:
+        logger.error(f"Error recalculating streaks: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to recalculate streaks: {str(e)}")
+
+@api_router.post("/admin/achievements/{achievement_id}/assign-all", dependencies=[Depends(verify_admin)])
+async def admin_assign_achievement_to_all_users(achievement_id: str):
+    """Assign an achievement to all active users (admin only)"""
+    # Verify achievement exists
+    achievement = await db.achievements.find_one({"id": achievement_id, "active": True})
+    if not achievement:
+        raise HTTPException(status_code=404, detail="Achievement not found or inactive")
+    
+    # Get all active users
+    users = await db.users.find({"active": True}, {"_id": 0, "email": 1, "achievements": 1}).to_list(1000)
+    
+    assigned_count = 0
+    already_had_count = 0
+    updated_count = 0
+    
+    for user in users:
+        user_achievements = user.get("achievements", [])
+        
+        if achievement_id in user_achievements:
+            already_had_count += 1
+            continue
+        
+        # Add achievement
+        await db.users.update_one(
+            {"email": user["email"]},
+            {
+                "$push": {"achievements": achievement_id},
+                "$set": {"last_active": datetime.now(timezone.utc).isoformat()}
+            }
+        )
+        assigned_count += 1
+        updated_count += 1
+    
+    await tracker.log_admin_activity(
+        action_type="achievement_bulk_assigned",
+        admin_email="admin",
+        details={
+            "achievement_id": achievement_id,
+            "assigned_to": assigned_count,
+            "already_had": already_had_count,
+            "total_users": len(users)
+        }
+    )
+    
+    return {
+        "status": "success",
+        "message": f"Achievement assigned to {assigned_count} users",
+        "achievement": achievement,
+        "stats": {
+            "total_users": len(users),
+            "newly_assigned": assigned_count,
+            "already_had": already_had_count
+        }
+    }
+
+@api_router.post("/admin/achievements/{achievement_id}/remove-all", dependencies=[Depends(verify_admin)])
+async def admin_remove_achievement_from_all_users(achievement_id: str):
+    """Remove an achievement from all users (admin only)"""
+    # Verify achievement exists
+    achievement = await db.achievements.find_one({"id": achievement_id})
+    if not achievement:
+        raise HTTPException(status_code=404, detail="Achievement not found")
+    
+    # Remove from all users
+    result = await db.users.update_many(
+        {},
+        {"$pull": {"achievements": achievement_id}}
+    )
+    
+    await tracker.log_admin_activity(
+        action_type="achievement_bulk_removed",
+        admin_email="admin",
+        details={
+            "achievement_id": achievement_id,
+            "removed_from": result.modified_count
+        }
+    )
+    
+    return {
+        "status": "success",
+        "message": f"Achievement removed from {result.modified_count} users",
+        "achievement_id": achievement_id,
+        "users_affected": result.modified_count
+    }
+
 @api_router.post("/admin/restore/{deletion_id}", dependencies=[Depends(verify_admin)])
 async def restore_deleted_data(deletion_id: str):
     """Restore soft-deleted data"""
@@ -3161,6 +5186,9 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Index creation warning: {e}")
 
+        await initialize_achievements()
+        logger.info("Achievements initialized")
+        
         scheduler.start()
         logger.info("Scheduler started")
 

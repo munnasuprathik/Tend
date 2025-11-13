@@ -176,3 +176,53 @@ a, button, input, select, textarea, [role="button"] {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+/* Remove ALL gradient bars/indicators from tabs - COMPLETE REMOVAL */
+[data-radix-tabs-trigger][data-state="active"]::after,
+[data-radix-tabs-trigger][data-state="active"]::before,
+[data-radix-tabs-trigger]::after,
+[data-radix-tabs-trigger]::before,
+[data-radix-tabs-list]::after,
+[data-radix-tabs-list]::before,
+[data-radix-tabs-content]::before,
+[data-radix-tabs-content]::after {
+  content: none !important;
+  display: none !important;
+  background: none !important;
+  background-image: none !important;
+  border: none !important;
+  height: 0 !important;
+  width: 0 !important;
+}
+
+/* Remove any gradient backgrounds from active tabs */
+[data-radix-tabs-trigger][data-state="active"] {
+  background-image: none !important;
+  background: var(--background) !important;
+  border-bottom: none !important;
+  border-top: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1) !important;
+  position: relative;
+}
+
+/* Remove gradient from TabsList */
+[data-radix-tabs-list] {
+  background-image: none !important;
+  background: var(--muted) !important;
+}
+
+/* Remove any gradient bars that might appear below tabs or as underlines */
+[data-radix-tabs-root]::after,
+[data-radix-tabs-root]::before {
+  content: none !important;
+  display: none !important;
+}
+
+/* Remove any potential gradient underlines */
+button[data-radix-tabs-trigger][data-state="active"],
+button[data-radix-tabs-trigger] {
+  border-bottom: none !important;
+  background-image: none !important;
+}

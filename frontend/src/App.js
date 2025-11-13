@@ -13,15 +13,21 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { SignedIn, SignedOut, SignIn, SignUp, useUser, useClerk } from "@clerk/clerk-react";
-import { CheckCircle, Mail, Sparkles, Clock, User, LogOut, Send, Edit, Shield, BarChart3, Users, History, TrendingUp, Globe, RefreshCw, Flame, Star, Loader2, AlertTriangle, Download, Eye, Filter, Database, Search, Calendar, Play, Megaphone } from "lucide-react";
+import { CheckCircle, Mail, Sparkles, Clock, User, LogOut, Send, Edit, Shield, BarChart3, Users, History, TrendingUp, Globe, RefreshCw, Flame, Star, Loader2, AlertTriangle, Download, Eye, Filter, Database, Search, Calendar, Play, Megaphone, Trophy, Award, Target, Zap, BookOpen, Book, X, Satellite, Goal, Calendar as CalendarIcon, MessageSquare, Wifi, Activity, Settings, CircleDot } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { MessageHistory } from "@/components/MessageHistory";
 import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
 import { PersonalityManager } from "@/components/PersonalityManager";
 import { ScheduleManager } from "@/components/ScheduleManager";
 import { StreakCalendar } from "@/components/StreakCalendar";
+import { StreakMilestones } from "@/components/StreakMilestones";
+import { WeeklyMonthlyReports } from "@/components/WeeklyMonthlyReports";
 import { RealTimeAnalytics } from "@/components/RealTimeAnalytics";
 import { AdminUserDetails } from "@/components/AdminUserDetails";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import { NetworkStatus } from "@/components/NetworkStatus";
+import { SkeletonLoader } from "@/components/SkeletonLoader";
+import { exportMessageHistory, exportAchievements, exportAnalytics } from "@/utils/exportData";
 import { TIMEZONES } from "@/utils/timezones";
 import {
   formatScheduleTime,
@@ -514,6 +520,9 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
   const [previewMessage, setPreviewMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [achievements, setAchievements] = useState({ unlocked: [], locked: [], total_unlocked: 0, total_available: 0 });
+  const [achievementsLoading, setAchievementsLoading] = useState(false);
+  const [messageHistory, setMessageHistory] = useState([]);
 
   const userTimezone = user.schedule?.timezone;
   const userScheduleTimeLabel = formatScheduleTime(
@@ -549,6 +558,25 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
       console.error("Failed to refresh user data:", error);
     }
   }, [user.email, handleUserStateUpdate]);
+
+  // Fetch message history for calendar
+  const fetchMessageHistory = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API}/users/${user.email}/message-history?limit=500`);
+      const sorted = [...(response.data.messages || [])].sort(
+        (a, b) => new Date(b.sent_at || b.created_at) - new Date(a.sent_at || a.created_at),
+      );
+      setMessageHistory(sorted);
+    } catch (error) {
+      console.error("Failed to load message history for calendar:", error);
+      setMessageHistory([]);
+    }
+  }, [user.email]);
+
+  // Fetch message history on mount and when refreshKey changes
+  useEffect(() => {
+    fetchMessageHistory();
+  }, [fetchMessageHistory, refreshKey]);
 
   const handleUpdate = async () => {
     setLoading(true);
@@ -627,41 +655,103 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
     }
   };
 
+  const fetchAchievements = useCallback(async () => {
+    setAchievementsLoading(true);
+    try {
+      const response = await axios.get(`${API}/users/${user.email}/achievements`);
+      setAchievements(response.data);
+    } catch (error) {
+      console.error("Failed to fetch achievements:", error);
+      toast.error("Failed to load achievements");
+    } finally {
+      setAchievementsLoading(false);
+    }
+  }, [user.email]);
+
+  useEffect(() => {
+    fetchAchievements();
+  }, [fetchAchievements, refreshKey]);
+
+  const getAchievementIcon = (iconName) => {
+    const iconMap = {
+      "Sprout": CheckCircle,
+      "Flame": Flame,
+      "Zap": Zap,
+      "Trophy": Trophy,
+      "Mail": Mail,
+      "BookOpen": BookOpen,
+      "Book": Book,
+      "Star": Star,
+      "Target": Target,
+      "Award": Award,
+    };
+    const IconComponent = iconMap[iconName] || Trophy;
+    return <IconComponent className="h-6 w-6" />;
+  };
+
   return (
-    <div className="min-h-screen p-4 md:p-8">
+    <div className="min-h-screen p-3 sm:p-4 md:p-8">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold">Welcome back, {user.name}!</h1>
-            <p className="text-muted-foreground mt-1">{user.email}</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg flex-shrink-0">
+              <User className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold flex flex-wrap items-center gap-1 sm:gap-2">
+                <span className="break-words">Welcome back, {user.name}!</span>
+                <Sparkles className="h-5 w-5 sm:h-6 sm:w-6 text-indigo-500 flex-shrink-0" />
+              </h1>
+              <p className="text-muted-foreground mt-1 flex items-center gap-1 text-sm sm:text-base">
+                <Mail className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate">{user.email}</span>
+              </p>
+            </div>
           </div>
-          <Button variant="outline" onClick={onLogout} data-testid="logout-btn">
+          <Button variant="outline" onClick={onLogout} data-testid="logout-btn" className="w-full sm:w-auto">
             <LogOut className="h-4 w-4 mr-2" />
             Logout
           </Button>
         </div>
 
-        <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="analytics" data-testid="analytics-tab">
-              <TrendingUp className="h-4 w-4 mr-2" />
-              Analytics
-            </TabsTrigger>
-            <TabsTrigger value="history" data-testid="history-tab">
-              <History className="h-4 w-4 mr-2" />
-              History
-            </TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-          </TabsList>
+        <Tabs defaultValue="overview" className="space-y-4 sm:space-y-6">
+          <div className="overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0">
+            <TabsList className="inline-flex w-full sm:grid sm:grid-cols-5 min-w-max sm:min-w-0 [&>*]:bg-transparent [&>*[data-state=active]]:bg-white [&>*[data-state=active]]:shadow-sm">
+              <TabsTrigger value="overview" className="flex-shrink-0">
+                <BarChart3 className="h-4 w-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Overview</span>
+                <span className="sm:hidden">Overview</span>
+              </TabsTrigger>
+              <TabsTrigger value="analytics" data-testid="analytics-tab" className="flex-shrink-0">
+                <TrendingUp className="h-4 w-4 mr-1 sm:mr-2" />
+                Analytics
+              </TabsTrigger>
+              <TabsTrigger value="achievements" data-testid="achievements-tab" className="flex-shrink-0">
+                <Trophy className="h-4 w-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Achievements</span>
+                <span className="sm:hidden">Awards</span>
+              </TabsTrigger>
+              <TabsTrigger value="history" data-testid="history-tab" className="flex-shrink-0">
+                <History className="h-4 w-4 mr-1 sm:mr-2" />
+                History
+              </TabsTrigger>
+              <TabsTrigger value="settings" className="flex-shrink-0">
+                <Settings className="h-4 w-4 mr-1 sm:mr-2" />
+                Settings
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-          <TabsContent value="overview" className="space-y-6">
+          <TabsContent value="overview" className="space-y-4 sm:space-y-6">
             {/* Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Status</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Activity className="h-4 w-4" />
+                    Status
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2">
@@ -673,11 +763,15 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
 
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Frequency</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Frequency
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-2xl font-bold capitalize">{user.schedule.frequency}</p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                    <Clock className="h-3 w-3" />
                     at {userScheduleTimeLabel}
                     {userTimezoneDisplay && (
                       <span className="ml-1 text-xs text-gray-500">({userTimezoneDisplay})</span>
@@ -688,11 +782,17 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
 
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Personalities</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Personalities
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-lg font-bold">{user.personalities?.length || 0}</p>
-                  <p className="text-sm text-muted-foreground">active</p>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    <CircleDot className="h-3 w-3 text-green-500" />
+                    active
+                  </p>
                 </CardContent>
               </Card>
             </div>
@@ -700,7 +800,10 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
             {/* Current Goals */}
             <Card>
               <CardHeader>
-                <CardTitle>Your Current Goals</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5 text-indigo-600" />
+                  Your Current Goals
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground whitespace-pre-wrap">{user.goals}</p>
@@ -710,14 +813,17 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
             {/* Preview & Send */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>Preview Your Next Message</span>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={handleGeneratePreview} disabled={loading}>
+                <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2">
+                  <span className="flex items-center gap-2">
+                    <Mail className="h-5 w-5 text-indigo-600 flex-shrink-0" />
+                    <span className="text-base sm:text-lg">Preview Your Next Message</span>
+                  </span>
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <Button size="sm" variant="outline" onClick={handleGeneratePreview} disabled={loading} className="w-full sm:w-auto">
                       <Sparkles className="h-4 w-4 mr-2" />
                       Generate Preview
                     </Button>
-                    <Button size="sm" onClick={handleSendNow} disabled={loading} data-testid="send-now-btn">
+                    <Button size="sm" onClick={handleSendNow} disabled={loading} data-testid="send-now-btn" className="w-full sm:w-auto">
                       <Send className="h-4 w-4 mr-2" />
                       Send Now
                     </Button>
@@ -737,13 +843,164 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
           </TabsContent>
 
           <TabsContent value="analytics" className="space-y-6">
+            <StreakMilestones 
+              streakCount={user.streak_count || 0}
+              lastEmailSent={user.last_email_sent}
+            />
             <StreakCalendar 
               streakCount={user.streak_count || 0}
               totalMessages={user.total_messages_received || 0}
               lastEmailSent={user.last_email_sent}
+              messageHistory={messageHistory}
               timezone={userTimezone}
             />
             <AnalyticsDashboard email={user.email} refreshKey={refreshKey} />
+            <WeeklyMonthlyReports email={user.email} user={user} refreshKey={refreshKey} />
+          </TabsContent>
+
+          <TabsContent value="achievements" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Trophy className="h-5 w-5 text-yellow-500" />
+                      Your Achievements
+                    </CardTitle>
+                    <CardDescription>
+                      {achievements.total_unlocked} of {achievements.total_available} unlocked
+                    </CardDescription>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => exportAchievements(achievements)}
+                      disabled={achievementsLoading}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Export
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={fetchAchievements}
+                      disabled={achievementsLoading}
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-2 ${achievementsLoading ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {achievementsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Progress Info */}
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">Progress</span>
+                      <span className="font-medium">
+                        {achievements.total_available > 0 
+                          ? Math.round((achievements.total_unlocked / achievements.total_available) * 100) 
+                          : 0}% ({achievements.total_unlocked} of {achievements.total_available})
+                      </span>
+                    </div>
+
+                    {/* Unlocked Achievements */}
+                    {achievements.unlocked.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                          <CheckCircle className="h-5 w-5 text-green-500" />
+                          Unlocked ({achievements.unlocked.length})
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {achievements.unlocked.map((achievement) => (
+                            <Card 
+                              key={achievement.id} 
+                              className="border-2 border-green-500 bg-gradient-to-br from-green-50 to-emerald-50"
+                            >
+                              <CardContent className="p-4">
+                                <div className="flex items-start gap-3">
+                                  <div className="p-2 bg-green-100 rounded-lg text-green-600">
+                                    {getAchievementIcon(achievement.icon_name)}
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <h4 className="font-semibold">{achievement.name}</h4>
+                                      <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300">
+                                        Unlocked
+                                      </Badge>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">{achievement.description}</p>
+                                    {achievement.category && (
+                                      <Badge variant="secondary" className="mt-2 text-xs">
+                                        {achievement.category}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Locked Achievements */}
+                    {achievements.locked.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                          <Award className="h-5 w-5 text-gray-400" />
+                          Locked ({achievements.locked.length})
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {achievements.locked.map((achievement) => (
+                            <Card 
+                              key={achievement.id} 
+                              className="border-2 border-gray-200 bg-gray-50 opacity-75"
+                            >
+                              <CardContent className="p-4">
+                                <div className="flex items-start gap-3">
+                                  <div className="p-2 bg-gray-200 rounded-lg text-gray-400">
+                                    {getAchievementIcon(achievement.icon_name)}
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <h4 className="font-semibold text-gray-600">{achievement.name}</h4>
+                                      <Badge variant="outline" className="bg-gray-100 text-gray-500 border-gray-300">
+                                        Locked
+                                      </Badge>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">{achievement.description}</p>
+                                    {achievement.category && (
+                                      <Badge variant="secondary" className="mt-2 text-xs bg-gray-200">
+                                        {achievement.category}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Empty State */}
+                    {achievements.unlocked.length === 0 && achievements.locked.length === 0 && (
+                      <div className="text-center py-12">
+                        <Trophy className="h-16 w-16 mx-auto text-gray-300 mb-4" />
+                        <p className="text-muted-foreground">No achievements available yet</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="history" className="space-y-6">
@@ -826,6 +1083,205 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
   );
 }
 
+function AchievementFormCard({ achievement, onSave, onCancel, getAchievementIcon }) {
+  const [formData, setFormData] = useState({
+    id: achievement?.id || "",
+    name: achievement?.name || "",
+    description: achievement?.description || "",
+    icon_name: achievement?.icon_name || "Trophy",
+    category: achievement?.category || "engagement",
+    requirement: achievement?.requirement || { type: "messages", value: 1 },
+    priority: achievement?.priority || 1,
+    show_on_home: achievement?.show_on_home || false,
+    active: achievement?.active !== undefined ? achievement.active : true,
+  });
+
+  const iconOptions = ["Trophy", "Award", "Star", "Flame", "Zap", "Target", "Mail", "BookOpen", "Book", "CheckCircle", "Clock", "Sparkles"];
+  const categoryOptions = ["streak", "messages", "engagement", "goals", "consistency", "loyalty"];
+  const requirementTypes = ["streak", "messages", "feedback_count", "has_goal", "goal_completed", "consecutive_days", "personality_count", "five_star_ratings", "account_age_days"];
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!formData.id || !formData.name || !formData.description) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+    onSave(formData);
+  };
+
+  return (
+    <Card className="border-2 border-indigo-200">
+      <CardHeader>
+        <CardTitle>
+          {achievement ? "Edit Achievement" : "Create New Achievement"}
+        </CardTitle>
+        <CardDescription>
+          {achievement ? "Update achievement details" : "Add a new achievement to the system"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label>Achievement ID *</Label>
+              <Input
+                value={formData.id}
+                onChange={(e) => setFormData({...formData, id: e.target.value})}
+                placeholder="e.g., new_achievement"
+                disabled={!!achievement}
+                className="mt-2"
+                required
+              />
+              <p className="text-xs text-muted-foreground mt-1">Unique identifier (cannot be changed)</p>
+            </div>
+
+            <div>
+              <Label>Name *</Label>
+              <Input
+                value={formData.name}
+                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                placeholder="e.g., Super Achiever"
+                className="mt-2"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label>Description *</Label>
+            <Textarea
+              value={formData.description}
+              onChange={(e) => setFormData({...formData, description: e.target.value})}
+              placeholder="e.g., Complete 10 goals"
+              className="mt-2"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label>Icon</Label>
+              <Select 
+                value={formData.icon_name} 
+                onValueChange={(value) => setFormData({...formData, icon_name: value})}
+              >
+                <SelectTrigger className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {iconOptions.map((icon) => (
+                    <SelectItem key={icon} value={icon}>
+                      <div className="flex items-center gap-2">
+                        {getAchievementIcon(icon)}
+                        {icon}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Category</Label>
+              <Select 
+                value={formData.category} 
+                onValueChange={(value) => setFormData({...formData, category: value})}
+              >
+                <SelectTrigger className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {categoryOptions.map((cat) => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div>
+            <Label>Requirement</Label>
+            <div className="grid grid-cols-2 gap-4 mt-2">
+              <div>
+                <Label className="text-xs">Type</Label>
+                <Select 
+                  value={formData.requirement.type} 
+                  onValueChange={(value) => setFormData({
+                    ...formData, 
+                    requirement: {...formData.requirement, type: value}
+                  })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {requirementTypes.map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Value</Label>
+                <Input
+                  type="number"
+                  value={formData.requirement.value}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    requirement: {...formData.requirement, value: formData.requirement.type === "has_goal" ? true : Number(e.target.value)}
+                  })}
+                  disabled={formData.requirement.type === "has_goal"}
+                  placeholder="e.g., 10"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label>Priority</Label>
+              <Input
+                type="number"
+                value={formData.priority}
+                onChange={(e) => setFormData({...formData, priority: Number(e.target.value)})}
+                className="mt-2"
+                min="1"
+              />
+            </div>
+
+            <div className="flex items-center space-x-2 pt-8">
+              <Switch
+                id="show-on-home"
+                checked={formData.show_on_home}
+                onCheckedChange={(checked) => setFormData({...formData, show_on_home: checked})}
+              />
+              <Label htmlFor="show-on-home">Show on Home</Label>
+            </div>
+
+            <div className="flex items-center space-x-2 pt-8">
+              <Switch
+                id="active"
+                checked={formData.active}
+                onCheckedChange={(checked) => setFormData({...formData, active: checked})}
+              />
+              <Label htmlFor="active">Active</Label>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <Button type="button" variant="outline" onClick={onCancel} className="flex-1">
+              Cancel
+            </Button>
+            <Button type="submit" className="flex-1">
+              {achievement ? "Update Achievement" : "Create Achievement"}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
 function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
@@ -842,11 +1298,14 @@ function AdminDashboard() {
   const [broadcastSubject, setBroadcastSubject] = useState("");
   const [allMessageHistory, setAllMessageHistory] = useState([]);
   const [emailStats, setEmailStats] = useState(null);
-  const [messageHistoryFilter, setMessageHistoryFilter] = useState({
-    email: "",
-    personality: "",
-    startDate: "",
-    endDate: ""
+  const [messageHistoryFilter, setMessageHistoryFilter] = useState(() => {
+    // Initialize with sanitized filter
+    return sanitizeFilter({
+      email: "",
+      personality: "",
+      startDate: "",
+      endDate: ""
+    });
   });
   const [adminToken, setAdminToken] = useState("");
   const [authenticated, setAuthenticated] = useState(false);
@@ -857,6 +1316,12 @@ function AdminDashboard() {
   const [filterActive, setFilterActive] = useState("all"); // all, active, inactive
   const [logFilterStatus, setLogFilterStatus] = useState("all"); // all, success, failed
   const [logFilterEmail, setLogFilterEmail] = useState("");
+  const [achievements, setAchievements] = useState([]);
+  const [achievementsLoading, setAchievementsLoading] = useState(false);
+  const [editingAchievement, setEditingAchievement] = useState(null);
+  const [showAchievementForm, setShowAchievementForm] = useState(false);
+  const [selectedUserForAchievement, setSelectedUserForAchievement] = useState(null);
+  const [selectedAchievementForBulk, setSelectedAchievementForBulk] = useState(null);
 
   const userTimezoneMap = useMemo(() => {
     const map = new Map();
@@ -923,6 +1388,187 @@ function AdminDashboard() {
     if (token) {
       fetchAdminData(token);
     }
+  };
+
+  const fetchAchievements = useCallback(async () => {
+    setAchievementsLoading(true);
+    try {
+      const headers = { Authorization: `Bearer ${sessionStorage.getItem('adminToken')}` };
+      const response = await axios.get(`${API}/admin/achievements?include_inactive=true`, { headers });
+      console.log("Achievements response:", response.data);
+      if (response.data && response.data.achievements) {
+        setAchievements(response.data.achievements || []);
+      } else if (Array.isArray(response.data)) {
+        // Handle case where API returns array directly
+        setAchievements(response.data);
+      } else {
+        console.error("Unexpected response format:", response.data);
+        toast.error("Unexpected response format from server");
+        setAchievements([]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch achievements:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      toast.error(error.response?.data?.detail || error.message || "Failed to load achievements");
+      setAchievements([]);
+    } finally {
+      setAchievementsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (authenticated) {
+      fetchAchievements();
+    }
+  }, [authenticated, fetchAchievements]);
+
+  const handleCreateAchievement = async (achievementData) => {
+    try {
+      const headers = { Authorization: `Bearer ${sessionStorage.getItem('adminToken')}` };
+      await axios.post(`${API}/admin/achievements`, achievementData, { headers });
+      toast.success("Achievement created successfully");
+      setShowAchievementForm(false);
+      setEditingAchievement(null);
+      fetchAchievements();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to create achievement");
+    }
+  };
+
+  const handleUpdateAchievement = async (achievementId, achievementData) => {
+    try {
+      const headers = { Authorization: `Bearer ${sessionStorage.getItem('adminToken')}` };
+      await axios.put(`${API}/admin/achievements/${achievementId}`, achievementData, { headers });
+      toast.success("Achievement updated successfully");
+      setShowAchievementForm(false);
+      setEditingAchievement(null);
+      fetchAchievements();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to update achievement");
+    }
+  };
+
+  const handleDeleteAchievement = async (achievementId, hardDelete = false) => {
+    if (!confirm(`Are you sure you want to ${hardDelete ? 'permanently delete' : 'deactivate'} this achievement?`)) {
+      return;
+    }
+    try {
+      const headers = { Authorization: `Bearer ${sessionStorage.getItem('adminToken')}` };
+      await axios.delete(`${API}/admin/achievements/${achievementId}?hard_delete=${hardDelete}`, { headers });
+      toast.success(`Achievement ${hardDelete ? 'deleted' : 'deactivated'} successfully`);
+      fetchAchievements();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to delete achievement");
+    }
+  };
+
+  const handleAssignAchievement = async (email, achievementId) => {
+    try {
+      const headers = { Authorization: `Bearer ${sessionStorage.getItem('adminToken')}` };
+      const response = await axios.post(`${API}/admin/users/${email}/achievements/${achievementId}`, {}, { headers });
+      if (response.data.status === "already_assigned") {
+        toast.info("User already has this achievement");
+      } else {
+        toast.success("Achievement assigned successfully");
+      }
+      setSelectedUserForAchievement(null);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to assign achievement");
+    }
+  };
+
+  const handleRemoveAchievement = async (email, achievementId) => {
+    if (!confirm("Are you sure you want to remove this achievement from the user?")) {
+      return;
+    }
+    try {
+      const headers = { Authorization: `Bearer ${sessionStorage.getItem('adminToken')}` };
+      await axios.delete(`${API}/admin/users/${email}/achievements/${achievementId}`, { headers });
+      toast.success("Achievement removed successfully");
+      setSelectedUserForAchievement(null);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to remove achievement");
+    }
+  };
+
+  const handleBulkAssignAchievement = async (achievementId) => {
+    if (!confirm(`Are you sure you want to assign this achievement to ALL active users?`)) {
+      return;
+    }
+    try {
+      const headers = { Authorization: `Bearer ${sessionStorage.getItem('adminToken')}` };
+      const response = await axios.post(`${API}/admin/achievements/${achievementId}/assign-all`, {}, { headers });
+      toast.success(
+        `Achievement assigned to ${response.data.stats.newly_assigned} users. ${response.data.stats.already_had} users already had it.`
+      );
+      setSelectedAchievementForBulk(null);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to assign achievement to all users");
+    }
+  };
+
+  const handleBulkRemoveAchievement = async (achievementId) => {
+    if (!confirm(`Are you sure you want to remove this achievement from ALL users? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      const headers = { Authorization: `Bearer ${sessionStorage.getItem('adminToken')}` };
+      const response = await axios.post(`${API}/admin/achievements/${achievementId}/remove-all`, {}, { headers });
+      toast.success(`Achievement removed from ${response.data.users_affected} users`);
+      setSelectedAchievementForBulk(null);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to remove achievement from all users");
+    }
+  };
+
+  const handleRecalculateStreaks = async () => {
+    if (!confirm("Are you sure you want to recalculate streaks for all users? This will update streak counts based on message history.")) {
+      return;
+    }
+    try {
+      setAchievementsLoading(true);
+      const headers = { Authorization: `Bearer ${sessionStorage.getItem('adminToken')}` };
+      const response = await axios.post(`${API}/admin/achievements/recalculate-streaks`, {}, { headers });
+      
+      const results = response.data.results || [];
+      const summary = results.reduce((acc, r) => {
+        if (r.old_streak !== r.new_streak) {
+          acc.changed++;
+        }
+        return acc;
+      }, { changed: 0, total: results.length });
+      
+      toast.success(
+        `Streaks recalculated! ${summary.changed} user(s) had their streaks updated. Total: ${summary.total} users processed.`
+      );
+      
+      // Refresh admin data to show updated streaks
+      handleRefresh();
+    } catch (error) {
+      console.error("Failed to recalculate streaks:", error);
+      toast.error(error.response?.data?.detail || "Failed to recalculate streaks");
+    } finally {
+      setAchievementsLoading(false);
+    }
+  };
+
+  const getAchievementIcon = (iconName) => {
+    const iconMap = {
+      "Sprout": CheckCircle,
+      "Flame": Flame,
+      "Zap": Zap,
+      "Trophy": Trophy,
+      "Mail": Mail,
+      "BookOpen": BookOpen,
+      "Book": Book,
+      "Star": Star,
+      "Target": Target,
+      "Award": Award,
+      "Clock": Clock,
+      "Sparkles": Sparkles,
+    };
+    const IconComponent = iconMap[iconName] || Trophy;
+    return <IconComponent className="h-5 w-5" />;
   };
 
   const handleSendTestEmail = async (email) => {
@@ -1137,27 +1783,45 @@ function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen p-4 md:p-8 bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-screen p-3 sm:p-4 md:p-8 bg-gradient-to-br from-slate-50 to-slate-100">
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
           <div>
-            <h1 className="text-3xl md:text-4xl font-bold">Admin Dashboard</h1>
-            <p className="text-muted-foreground">Monitor InboxInspire</p>
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold">Admin Dashboard</h1>
+            <p className="text-muted-foreground text-sm sm:text-base">Monitor InboxInspire</p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleRefresh} disabled={loading}>
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <Button variant="outline" onClick={handleRefresh} disabled={loading} className="w-full sm:w-auto">
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button variant="outline" onClick={handleLogout}>
+            <Button variant="outline" onClick={handleLogout} className="w-full sm:w-auto">
               <LogOut className="h-4 w-4 mr-2" />
               Logout
             </Button>
           </div>
         </div>
 
+        {loading && !stats && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+            <span className="ml-2 text-muted-foreground">Loading dashboard...</span>
+          </div>
+        )}
+
+        {!loading && !stats && (
+          <Card className="mb-8">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-2 text-yellow-600">
+                <AlertTriangle className="h-5 w-5" />
+                <p>Stats not available. Please refresh or check your connection.</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4 mb-6 sm:mb-8">
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -1230,21 +1894,42 @@ function AdminDashboard() {
           </div>
         )}
 
-        <Tabs defaultValue="realtime" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-12">
-            <TabsTrigger value="realtime">🔴 Live</TabsTrigger>
-            <TabsTrigger value="users">Users ({users.length})</TabsTrigger>
-            <TabsTrigger value="email-history">Email History</TabsTrigger>
-            <TabsTrigger value="logs">Logs ({logs.length})</TabsTrigger>
-            <TabsTrigger value="feedback">Feedback ({feedbacks.length})</TabsTrigger>
-            <TabsTrigger value="events">Events</TabsTrigger>
-            <TabsTrigger value="errors">Errors {errors?.total > 0 && `(${errors.total})`}</TabsTrigger>
-            <TabsTrigger value="scheduler">Scheduler</TabsTrigger>
-            <TabsTrigger value="database">Database</TabsTrigger>
-            <TabsTrigger value="trends">Trends</TabsTrigger>
-            <TabsTrigger value="search">Search</TabsTrigger>
-            <TabsTrigger value="broadcast">Broadcast</TabsTrigger>
-          </TabsList>
+        <Tabs defaultValue="realtime" className="space-y-4 sm:space-y-6">
+          <div className="overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0">
+            <TabsList className="inline-flex w-full min-w-max sm:min-w-0 gap-1 sm:gap-0 sm:grid sm:grid-cols-12">
+              <TabsTrigger value="realtime" className="flex-shrink-0 text-xs sm:text-sm">
+                <span className="hidden sm:inline">🔴 Live</span>
+                <span className="sm:hidden">Live</span>
+              </TabsTrigger>
+              <TabsTrigger value="users" className="flex-shrink-0 text-xs sm:text-sm">
+                <span className="hidden sm:inline">Users ({users.length})</span>
+                <span className="sm:hidden">Users</span>
+              </TabsTrigger>
+              <TabsTrigger value="email-history" className="flex-shrink-0 text-xs sm:text-sm">
+                <span className="hidden sm:inline">Email History</span>
+                <span className="sm:hidden">Emails</span>
+              </TabsTrigger>
+              <TabsTrigger value="logs" className="flex-shrink-0 text-xs sm:text-sm">
+                <span className="hidden sm:inline">Logs ({logs.length})</span>
+                <span className="sm:hidden">Logs</span>
+              </TabsTrigger>
+              <TabsTrigger value="feedback" className="flex-shrink-0 text-xs sm:text-sm">
+                <span className="hidden sm:inline">Feedback ({feedbacks.length})</span>
+                <span className="sm:hidden">Feedback</span>
+              </TabsTrigger>
+              <TabsTrigger value="events" className="flex-shrink-0 text-xs sm:text-sm">Events</TabsTrigger>
+              <TabsTrigger value="errors" className="flex-shrink-0 text-xs sm:text-sm">
+                <span className="hidden sm:inline">Errors {errors?.total > 0 && `(${errors.total})`}</span>
+                <span className="sm:hidden">Errors</span>
+              </TabsTrigger>
+              <TabsTrigger value="scheduler" className="flex-shrink-0 text-xs sm:text-sm">Scheduler</TabsTrigger>
+              <TabsTrigger value="database" className="flex-shrink-0 text-xs sm:text-sm">Database</TabsTrigger>
+              <TabsTrigger value="trends" className="flex-shrink-0 text-xs sm:text-sm">Trends</TabsTrigger>
+              <TabsTrigger value="search" className="flex-shrink-0 text-xs sm:text-sm">Search</TabsTrigger>
+              <TabsTrigger value="broadcast" className="flex-shrink-0 text-xs sm:text-sm">Broadcast</TabsTrigger>
+              <TabsTrigger value="achievements" className="flex-shrink-0 text-xs sm:text-sm">Achievements</TabsTrigger>
+            </TabsList>
+          </div>
           
           <TabsContent value="realtime">
             <RealTimeAnalytics adminToken={sessionStorage.getItem('adminToken')} />
@@ -1254,32 +1939,32 @@ function AdminDashboard() {
             <div className="space-y-6">
               <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle>All Email Send History</CardTitle>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2">
+                    <CardTitle className="text-lg sm:text-xl">All Email Send History</CardTitle>
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={fetchAllMessageHistory}>
+                      <Button variant="outline" size="sm" onClick={fetchAllMessageHistory} className="flex-1 sm:flex-none">
                         <RefreshCw className="h-4 w-4 mr-2" />
                         Refresh
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleExportData('messages')}>
+                      <Button variant="outline" size="sm" onClick={() => handleExportData('messages')} className="flex-1 sm:flex-none">
                         <Download className="h-4 w-4 mr-2" />
                         Export
                       </Button>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2 mt-4">
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-2 mt-4">
                     <Input
                       placeholder="Filter by email..."
                       value={messageHistoryFilter.email}
                       onChange={(e) => setMessageHistoryFilter({...messageHistoryFilter, email: e.target.value})}
-                      className="max-w-xs"
+                      className="w-full sm:max-w-xs"
                       onKeyPress={(e) => e.key === 'Enter' && fetchAllMessageHistory()}
                     />
                     <Input
                       placeholder="Filter by personality..."
                       value={typeof messageHistoryFilter.personality === 'string' ? messageHistoryFilter.personality : ''}
                       onChange={(e) => setMessageHistoryFilter({...messageHistoryFilter, personality: e.target.value})}
-                      className="max-w-xs"
+                      className="w-full sm:max-w-xs"
                       onKeyPress={(e) => e.key === 'Enter' && fetchAllMessageHistory()}
                     />
                     <Input
@@ -1287,16 +1972,16 @@ function AdminDashboard() {
                       placeholder="Start date"
                       value={messageHistoryFilter.startDate}
                       onChange={(e) => setMessageHistoryFilter({...messageHistoryFilter, startDate: e.target.value})}
-                      className="max-w-xs"
+                      className="w-full sm:max-w-xs"
                     />
                     <Input
                       type="date"
                       placeholder="End date"
                       value={messageHistoryFilter.endDate}
                       onChange={(e) => setMessageHistoryFilter({...messageHistoryFilter, endDate: e.target.value})}
-                      className="max-w-xs"
+                      className="w-full sm:max-w-xs"
                     />
-                    <Button onClick={fetchAllMessageHistory} size="sm">
+                    <Button onClick={fetchAllMessageHistory} size="sm" className="w-full sm:w-auto">
                       <Filter className="h-4 w-4 mr-2" />
                       Apply Filters
                     </Button>
@@ -1307,6 +1992,7 @@ function AdminDashboard() {
                         setMessageHistoryFilter({email: "", personality: "", startDate: "", endDate: ""});
                         fetchAllMessageHistory();
                       }}
+                      className="w-full sm:w-auto"
                     >
                       Clear
                     </Button>
@@ -1318,11 +2004,11 @@ function AdminDashboard() {
                       allMessageHistory.map((msg) => {
                         return (
                           <Card key={msg.id} className="hover:bg-slate-50 transition">
-                            <CardContent className="p-4">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <p className="font-medium text-sm">{msg.email}</p>
+                            <CardContent className="p-3 sm:p-4">
+                              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                                    <p className="font-medium text-xs sm:text-sm truncate">{msg.email}</p>
                                     {msg.personality && (
                                       <Badge variant="outline">{safePersonalityValue(msg.personality)}</Badge>
                                     )}
@@ -1344,7 +2030,7 @@ function AdminDashboard() {
                                       </div>
                                     )}
                                   </div>
-                                  <p className="text-sm text-gray-700 line-clamp-3 mb-2">{msg.message}</p>
+                                  <p className="text-xs sm:text-sm text-gray-700 line-clamp-3 mb-2">{msg.message}</p>
                                   {msg.feedback_text && (
                                     <div className="mt-2 p-2 bg-blue-50 rounded border-l-2 border-blue-400">
                                       <p className="text-xs text-blue-700 font-medium mb-1">User Feedback:</p>
@@ -1352,7 +2038,7 @@ function AdminDashboard() {
                                     </div>
                                   )}
                                 </div>
-                                <div className="text-right ml-4">
+                                <div className="text-left sm:text-right sm:ml-4 flex-shrink-0">
                                   <span className="text-xs text-muted-foreground block">
                                     {formatDateTimeForTimezone(msg.sent_at, ADMIN_TIMEZONE, { includeZone: true })}
                                   </span>
@@ -1433,19 +2119,19 @@ function AdminDashboard() {
           <TabsContent value="users">
             <Card>
               <CardHeader>
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                  <CardTitle>All Users</CardTitle>
-                  <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                  <CardTitle className="text-lg sm:text-xl">All Users</CardTitle>
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                     <Input
                       placeholder="Search users..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="max-w-xs"
+                      className="w-full sm:max-w-xs"
                     />
                     <select
                       value={filterActive}
                       onChange={(e) => setFilterActive(e.target.value)}
-                      className="px-3 py-2 border rounded-md"
+                      className="px-3 py-2 border rounded-md w-full sm:w-auto"
                     >
                       <option value="all">All</option>
                       <option value="active">Active</option>
@@ -1455,7 +2141,7 @@ function AdminDashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   {filteredUsers.map((user) => {
                     // Defensive: Ensure personalities is an array with valid objects
                     const personalities = Array.isArray(user.personalities) 
@@ -1478,32 +2164,32 @@ function AdminDashboard() {
                       : 'None';
                     
                     return (
-                      <div key={user.id} className="p-4 border rounded-lg hover:bg-slate-50 transition">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <p className="font-semibold">{user.name || 'Unknown User'}</p>
-                            <div className={`h-2 w-2 rounded-full ${cardStatusColor}`} />
+                      <div key={user.id} className="p-3 sm:p-4 border rounded-lg hover:bg-slate-50 transition">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="font-semibold text-sm sm:text-base truncate">{user.name || 'Unknown User'}</p>
+                              <div className={`h-2 w-2 rounded-full flex-shrink-0 ${cardStatusColor}`} />
                             </div>
-                            <p className="text-sm text-muted-foreground">{user.email}</p>
+                            <p className="text-xs sm:text-sm text-muted-foreground truncate mb-2">{user.email}</p>
                             <div className="mt-2 space-y-1">
-                            <p className="text-xs text-muted-foreground">
-                              🛰️ Status: <span className="font-semibold text-gray-800">{cardStatusLabel}</span>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Satellite className="h-3 w-3" /> Status: <span className="font-semibold text-gray-800">{cardStatusLabel}</span>
                             </p>
-                              <p className="text-xs text-muted-foreground">
-                                🎯 Goals: {user.goals ? user.goals.substring(0, 60) + '...' : 'Not set'}
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Target className="h-3 w-3" /> Goals: {user.goals ? user.goals.substring(0, 60) + '...' : 'Not set'}
                               </p>
-                              <p className="text-xs text-muted-foreground">
-                                🎭 Personalities: {personalityDisplay}
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <User className="h-3 w-3" /> Personalities: {personalityDisplay}
                               </p>
-                              <p className="text-xs text-muted-foreground">
-                                📅 Schedule:{" "}
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <CalendarIcon className="h-3 w-3" /> Schedule:{" "}
                                 <span className="font-semibold text-indigo-600">
                                   {schedule.frequency || "Not set"}
                                 </span>
                               </p>
-                              <p className="text-xs text-muted-foreground">
-                                🌍 Local send time:{" "}
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Globe className="h-3 w-3" /> Local send time:{" "}
                                 <span className="font-semibold text-blue-600">
                                   {hasScheduleTime ? scheduleTimeLabel : "Not set"}
                                 </span>
@@ -1513,17 +2199,18 @@ function AdminDashboard() {
                                   </span>
                                 )}
                               </p>
-                              <p className="text-xs text-muted-foreground">
-                                🔥 Streak: <span className="font-semibold text-orange-600">{user.streak_count || 0} days</span> • 
-                                📧 Messages: {user.total_messages_received || 0}
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Flame className="h-3 w-3" /> Streak: <span className="font-semibold text-orange-600">{user.streak_count || 0} days</span> • 
+                                <MessageSquare className="h-3 w-3 ml-1" /> Messages: {user.total_messages_received || 0}
                               </p>
                             </div>
                           </div>
-                          <div className="flex flex-col gap-2 ml-4">
+                          <div className="flex flex-row sm:flex-col gap-2 sm:ml-4 flex-shrink-0">
                             <Button 
                               size="sm" 
                               variant="outline"
                               onClick={() => handleViewUserDetails(user.email)}
+                              className="flex-1 sm:flex-none text-xs sm:text-sm"
                             >
                               <Eye className="h-3 w-3 mr-1" />
                               Details
@@ -1532,14 +2219,17 @@ function AdminDashboard() {
                               size="sm" 
                               variant="outline"
                               onClick={() => handleSendTestEmail(user.email)}
+                              className="flex-1 sm:flex-none text-xs sm:text-sm"
                             >
                               <Mail className="h-3 w-3 mr-1" />
-                              Send Now
+                              <span className="hidden sm:inline">Send Now</span>
+                              <span className="sm:hidden">Send</span>
                             </Button>
                             <Button 
                               size="sm" 
                               variant={user.active ? "destructive" : "default"}
                               onClick={() => handleToggleUserStatus(user.email, user.active)}
+                              className="flex-1 sm:flex-none text-xs sm:text-sm"
                             >
                               {user.active ? 'Deactivate' : 'Activate'}
                             </Button>
@@ -1839,28 +2529,16 @@ function AdminDashboard() {
                 <CardContent>
                   <div className="space-y-6">
                     <div>
-                      <div className="flex justify-between items-center mb-2">
+                      <div className="flex justify-between items-center">
                         <span className="text-sm font-medium">Total Messages Delivered</span>
                         <span className="text-2xl font-bold">{stats?.total_messages || 0}</span>
-                      </div>
-                      <div className="h-2 bg-slate-200 rounded-full">
-                        <div 
-                          className="h-2 bg-indigo-500 rounded-full" 
-                          style={{ width: '75%' }}
-                        />
                       </div>
                     </div>
 
                     <div>
-                      <div className="flex justify-between items-center mb-2">
+                      <div className="flex justify-between items-center">
                         <span className="text-sm font-medium">User Engagement Rate</span>
                         <span className="text-2xl font-bold">{stats?.engagement_rate || 0}%</span>
-                      </div>
-                      <div className="h-2 bg-slate-200 rounded-full">
-                        <div 
-                          className="h-2 bg-green-500 rounded-full" 
-                          style={{ width: `${stats?.engagement_rate || 0}%` }}
-                        />
                       </div>
                     </div>
 
@@ -1898,15 +2576,7 @@ function AdminDashboard() {
                         .map(([name, count]) => (
                           <div key={name} className="flex items-center justify-between">
                             <span className="text-sm">{name}</span>
-                            <div className="flex items-center gap-2">
-                              <div className="w-32 h-2 bg-slate-200 rounded-full">
-                                <div 
-                                  className="h-2 bg-indigo-500 rounded-full" 
-                                  style={{ width: `${(count / users.length) * 100}%` }}
-                                />
-                              </div>
-                              <span className="text-sm font-medium w-8">{count}</span>
-                            </div>
+                            <span className="text-sm font-medium">{count}</span>
                           </div>
                         ));
                     })()}
@@ -2029,16 +2699,10 @@ function AdminDashboard() {
                           const maxCount = trends.user_trends?.length > 0 
                             ? Math.max(...trends.user_trends.map(t => t.count || 0))
                             : 1;
-                          const percentage = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
                           return (
                             <div key={item._id} className="flex items-center justify-between">
                               <span className="text-sm">{item._id}</span>
-                              <div className="flex items-center gap-2">
-                                <div className="w-32 h-2 bg-slate-200 rounded-full">
-                                  <div className="h-2 bg-blue-500 rounded-full" style={{ width: `${percentage}%` }} />
-                                </div>
-                                <span className="text-sm font-medium w-8">{item.count}</span>
-                              </div>
+                              <span className="text-sm font-medium">{item.count}</span>
                             </div>
                           );
                         })}
@@ -2194,6 +2858,282 @@ function AdminDashboard() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          <TabsContent value="achievements" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Trophy className="h-5 w-5 text-yellow-500" />
+                      Achievement Management
+                    </CardTitle>
+                    <CardDescription>
+                      Manage system achievements and assign them to users
+                    </CardDescription>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={fetchAchievements}
+                      disabled={achievementsLoading}
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-2 ${achievementsLoading ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      onClick={() => {
+                        setEditingAchievement(null);
+                        setShowAchievementForm(true);
+                      }}
+                    >
+                      <Award className="h-4 w-4 mr-2" />
+                      Add Achievement
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {achievementsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Achievement Form */}
+                    {showAchievementForm && (
+                      <AchievementFormCard
+                        achievement={editingAchievement}
+                        onSave={(data) => {
+                          if (editingAchievement) {
+                            handleUpdateAchievement(editingAchievement.id, data);
+                          } else {
+                            handleCreateAchievement(data);
+                          }
+                        }}
+                        onCancel={() => {
+                          setShowAchievementForm(false);
+                          setEditingAchievement(null);
+                        }}
+                        getAchievementIcon={getAchievementIcon}
+                      />
+                    )}
+
+                    {/* Achievements List */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold">
+                          All Achievements ({achievements.length})
+                        </h3>
+                        <Badge variant="outline">
+                          Active: {achievements.filter(a => a.active).length}
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {achievements.map((achievement) => (
+                          <Card 
+                            key={achievement.id}
+                            className={achievement.active ? "" : "opacity-60 border-gray-300"}
+                          >
+                            <CardContent className="p-4">
+                              <div className="flex items-start justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <div className={`p-2 rounded-lg ${achievement.active ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-200 text-gray-400'}`}>
+                                    {getAchievementIcon(achievement.icon_name)}
+                                  </div>
+                                  <div>
+                                    <h4 className="font-semibold">{achievement.name}</h4>
+                                    <Badge variant={achievement.active ? "default" : "secondary"} className="text-xs">
+                                      {achievement.active ? "Active" : "Inactive"}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              </div>
+                              <p className="text-sm text-muted-foreground mb-3">{achievement.description}</p>
+                              <div className="flex flex-wrap gap-2 mb-3">
+                                <Badge variant="outline" className="text-xs">
+                                  {achievement.category}
+                                </Badge>
+                                {achievement.show_on_home && (
+                                  <Badge variant="outline" className="text-xs bg-blue-50">
+                                    Show on Home
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex gap-2 mt-4">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setEditingAchievement(achievement);
+                                    setShowAchievementForm(true);
+                                  }}
+                                  className="flex-1"
+                                >
+                                  <Edit className="h-3 w-3 mr-1" />
+                                  Edit
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => handleDeleteAchievement(achievement.id, false)}
+                                  className="flex-1"
+                                >
+                                  {achievement.active ? "Deactivate" : "Delete"}
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                      {achievements.length === 0 && (
+                        <div className="text-center py-12">
+                          <Trophy className="h-16 w-16 mx-auto text-gray-300 mb-4" />
+                          <p className="text-muted-foreground">No achievements found</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Bulk Achievement Assignment */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Bulk Achievement Assignment</CardTitle>
+                        <CardDescription>Assign or remove achievements from all users at once</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          <div>
+                            <Label>Select Achievement</Label>
+                            <Select 
+                              value={selectedAchievementForBulk || ""} 
+                              onValueChange={setSelectedAchievementForBulk}
+                            >
+                              <SelectTrigger className="mt-2">
+                                <SelectValue placeholder="Choose an achievement" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {achievements.filter(a => a.active).map((achievement) => (
+                                  <SelectItem key={achievement.id} value={achievement.id}>
+                                    <div className="flex items-center gap-2">
+                                      {getAchievementIcon(achievement.icon_name)}
+                                      {achievement.name}
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {selectedAchievementForBulk && (
+                            <div className="flex gap-2">
+                              <Button
+                                variant="default"
+                                onClick={() => handleBulkAssignAchievement(selectedAchievementForBulk)}
+                                className="flex-1"
+                              >
+                                <Users className="h-4 w-4 mr-2" />
+                                Assign to All Users
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                onClick={() => handleBulkRemoveAchievement(selectedAchievementForBulk)}
+                                className="flex-1"
+                              >
+                                <X className="h-4 w-4 mr-2" />
+                                Remove from All Users
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Streak Management */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Streak Management</CardTitle>
+                        <CardDescription>Recalculate streaks based on message history</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          <div>
+                            <Label>Recalculate Streaks</Label>
+                            <p className="text-sm text-muted-foreground mb-3">
+                              This will recalculate streaks for all users based on their message history. 
+                              Useful if streaks are incorrect.
+                            </p>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="default"
+                                onClick={handleRecalculateStreaks}
+                                disabled={achievementsLoading}
+                              >
+                                <RefreshCw className={`h-4 w-4 mr-2 ${achievementsLoading ? 'animate-spin' : ''}`} />
+                                Recalculate All Streaks
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Individual User Achievement Assignment */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Assign Achievement to Individual User</CardTitle>
+                        <CardDescription>Manually assign achievements to specific users</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          <div>
+                            <Label>Select User</Label>
+                            <Select 
+                              value={selectedUserForAchievement || ""} 
+                              onValueChange={setSelectedUserForAchievement}
+                            >
+                              <SelectTrigger className="mt-2">
+                                <SelectValue placeholder="Choose a user" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {users.map((user) => (
+                                  <SelectItem key={user.email} value={user.email}>
+                                    {user.name} ({user.email})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {selectedUserForAchievement && (
+                            <div>
+                              <Label>Select Achievement</Label>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                                {achievements.filter(a => a.active).map((achievement) => (
+                                  <div key={achievement.id} className="flex items-center justify-between p-2 border rounded">
+                                    <div className="flex items-center gap-2">
+                                      {getAchievementIcon(achievement.icon_name)}
+                                      <span className="text-sm">{achievement.name}</span>
+                                    </div>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleAssignAchievement(selectedUserForAchievement, achievement.id)}
+                                    >
+                                      Assign
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
 
         {/* User Details Modal */}
@@ -2329,18 +3269,34 @@ function ErrorState({ onRetry }) {
 }
 
 function App() {
+  // Check if user is accessing admin route - bypass Clerk auth for admin
+  if (window.location.pathname === "/admin") {
+    return (
+      <ErrorBoundary>
+        <div className="App">
+          <Toaster position="top-center" />
+          <NetworkStatus />
+          <AdminDashboard />
+        </div>
+      </ErrorBoundary>
+    );
+  }
+
   return (
-    <div className="App">
-      <Toaster position="top-center" />
+    <ErrorBoundary>
+      <div className="App">
+        <Toaster position="top-center" />
+        <NetworkStatus />
 
-      <SignedOut>
-        <AuthScreen />
-      </SignedOut>
+        <SignedOut>
+          <AuthScreen />
+        </SignedOut>
 
-      <SignedIn>
-        <SignedInRouter />
-      </SignedIn>
-    </div>
+        <SignedIn>
+          <SignedInRouter />
+        </SignedIn>
+      </div>
+    </ErrorBoundary>
   );
 }
 
