@@ -45,6 +45,21 @@ export function GoalsManager({ user, onUpdate }) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("basic");
   
+  // Get default schedule from user's existing schedule preferences
+  const getDefaultSchedule = () => {
+    if (user?.schedule) {
+      return [{
+        type: user.schedule.frequency || "daily",
+        time: user.schedule.times?.[0] || user.schedule.time || "09:00",
+        timezone: user.schedule.timezone || "UTC",
+        active: !user.schedule.paused,
+        end_date: user.schedule.end_date || null
+      }];
+    }
+    // Fallback defaults if no user schedule exists
+    return [{ type: "daily", time: "09:00", timezone: "UTC", active: true, end_date: null }];
+  };
+  
   // Form state
   const [formData, setFormData] = useState({
     title: "",
@@ -53,7 +68,7 @@ export function GoalsManager({ user, onUpdate }) {
     personality_id: "",
     tone: "",
     custom_text: "",
-    schedules: [{ type: "daily", time: "09:00", timezone: "UTC", active: true }],
+    schedules: getDefaultSchedule(),
     send_limit_per_day: null,
     send_time_windows: [],
     active: true
@@ -187,9 +202,15 @@ export function GoalsManager({ user, onUpdate }) {
           type: user.schedule.frequency || 'daily',
           time: user.schedule.times?.[0] || user.schedule.time || '09:00',
           timezone: user.schedule.timezone || 'UTC',
-          active: !user.schedule.paused
+          active: !user.schedule.paused,
+          end_date: user.schedule.end_date || null
         }];
       }
+      // Ensure all schedules have end_date field
+      schedules = schedules.map(s => ({
+        ...s,
+        end_date: s.end_date || null
+      }));
       
       // For main goal, get send_time_windows from user.schedule
       let send_time_windows = goal.send_time_windows || [];
@@ -224,7 +245,7 @@ export function GoalsManager({ user, onUpdate }) {
         personality_id: defaultPersonalityId,
         tone: "",
         custom_text: "",
-        schedules: [{ type: "daily", time: "09:00", timezone: user.schedule?.timezone || "UTC", active: true }],
+        schedules: getDefaultSchedule(),
         send_limit_per_day: null,
         send_time_windows: [],
         active: true
@@ -241,13 +262,21 @@ export function GoalsManager({ user, onUpdate }) {
   };
 
   const handleAddSchedule = () => {
-    setFormData({
-      ...formData,
-      schedules: [
-        ...formData.schedules,
-        { type: "daily", time: "09:00", timezone: user.schedule?.timezone || "UTC", active: true }
-      ]
-    });
+      // Use user's schedule preferences for new schedule, or defaults
+      const defaultSchedule = getDefaultSchedule()[0];
+      setFormData({
+        ...formData,
+        schedules: [
+          ...formData.schedules,
+          { 
+            type: defaultSchedule.type, 
+            time: defaultSchedule.time, 
+            timezone: defaultSchedule.timezone, 
+            active: defaultSchedule.active, 
+            end_date: defaultSchedule.end_date 
+          }
+        ]
+      });
   };
 
   const handleRemoveSchedule = (index) => {
@@ -338,7 +367,8 @@ export function GoalsManager({ user, onUpdate }) {
           timezone: s.timezone,
           weekdays: s.type === "weekly" ? (s.weekdays || [0]) : null,
           monthly_dates: s.type === "monthly" ? (s.monthly_dates || [1]) : null,
-          active: s.active !== false
+          active: s.active !== false,
+          end_date: s.end_date || null
         })),
         send_limit_per_day: formData.send_limit_per_day || null,
         send_time_windows: formData.send_time_windows.length > 0 ? formData.send_time_windows.map(w => ({
@@ -371,7 +401,8 @@ export function GoalsManager({ user, onUpdate }) {
               frequency: firstSchedule.type,
               times: [firstSchedule.time],  // Use times array (not time string)
               timezone: firstSchedule.timezone || user.schedule?.timezone || 'UTC',
-              paused: !firstSchedule.active
+              paused: !firstSchedule.active,
+              end_date: firstSchedule.end_date || null
             };
             
             // Preserve existing schedule fields if they exist
@@ -916,6 +947,41 @@ export function GoalsManager({ user, onUpdate }) {
                               </SelectContent>
                             </Select>
                           </div>
+                          <div className="col-span-2">
+                            <Label className="text-xs sm:text-sm">Deadline (Optional)</Label>
+                            <Input
+                              type="datetime-local"
+                              value={schedule.end_date ? (() => {
+                                // Convert UTC ISO string to local datetime-local format
+                                const utcDate = new Date(schedule.end_date);
+                                // Get local date components
+                                const year = utcDate.getFullYear();
+                                const month = String(utcDate.getMonth() + 1).padStart(2, '0');
+                                const day = String(utcDate.getDate()).padStart(2, '0');
+                                const hours = String(utcDate.getHours()).padStart(2, '0');
+                                const minutes = String(utcDate.getMinutes()).padStart(2, '0');
+                                return `${year}-${month}-${day}T${hours}:${minutes}`;
+                              })() : ""}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                if (value) {
+                                  // Convert local datetime to UTC ISO string
+                                  // datetime-local gives us local time, we need to convert to UTC
+                                  const localDate = new Date(value);
+                                  // Create ISO string in UTC
+                                  const isoString = localDate.toISOString();
+                                  handleUpdateSchedule(index, "end_date", isoString);
+                                } else {
+                                  handleUpdateSchedule(index, "end_date", null);
+                                }
+                              }}
+                              className="h-9"
+                              placeholder="Leave empty for no deadline"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Emails will stop being sent after this date and time
+                            </p>
+                          </div>
                         </div>
 
                         {schedule.type === "weekly" && (
@@ -1220,6 +1286,18 @@ export function GoalsManager({ user, onUpdate }) {
                             <div className="flex items-center gap-1 min-w-0 w-full sm:w-auto sm:flex-initial">
                               <Clock className="h-3.5 w-3.5 flex-shrink-0" />
                               <span className="truncate text-xs sm:text-sm">Next: {formatDateTimeForTimezone(goal.next_sends[0], goal.schedules?.[0]?.timezone || "UTC", { includeDate: true, includeTime: true })}</span>
+                            </div>
+                          )}
+                          {goal.schedules && goal.schedules.some(s => s.end_date) && (
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <Calendar className="h-3.5 w-3.5 flex-shrink-0 text-orange-500" />
+                              <span className="whitespace-nowrap text-xs sm:text-sm">
+                                Deadline: {formatDateTimeForTimezone(
+                                  goal.schedules.find(s => s.end_date)?.end_date,
+                                  goal.schedules.find(s => s.end_date)?.timezone || "UTC",
+                                  { includeDate: true, includeTime: true }
+                                )}
+                              </span>
                             </div>
                           )}
                         </div>

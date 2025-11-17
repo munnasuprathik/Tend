@@ -145,7 +145,8 @@ function OnboardingScreen({ email, onComplete }) {
       } catch {
         return "UTC";
       }
-    })()
+    })(),
+    deadline: null
   });
   const [loading, setLoading] = useState(false);
 
@@ -240,7 +241,8 @@ function OnboardingScreen({ email, onComplete }) {
         times: [formData.time],
         timezone: formData.timezone,
         paused: false,
-        skip_next: false
+        skip_next: false,
+        end_date: formData.deadline || null
       };
 
       const response = await axios.post(`${API}/onboarding`, {
@@ -528,6 +530,39 @@ function OnboardingScreen({ email, onComplete }) {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div>
+                <Label>Deadline (Optional)</Label>
+                <Input
+                  type="datetime-local"
+                  value={formData.deadline ? (() => {
+                    // Convert UTC ISO string to local datetime-local format
+                    const utcDate = new Date(formData.deadline);
+                    const year = utcDate.getFullYear();
+                    const month = String(utcDate.getMonth() + 1).padStart(2, '0');
+                    const day = String(utcDate.getDate()).padStart(2, '0');
+                    const hours = String(utcDate.getHours()).padStart(2, '0');
+                    const minutes = String(utcDate.getMinutes()).padStart(2, '0');
+                    return `${year}-${month}-${day}T${hours}:${minutes}`;
+                  })() : ""}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value) {
+                      // Convert local datetime to UTC ISO string
+                      const localDate = new Date(value);
+                      const isoString = localDate.toISOString();
+                      setFormData({...formData, deadline: isoString});
+                    } else {
+                      setFormData({...formData, deadline: null});
+                    }
+                  }}
+                  className="mt-2"
+                  placeholder="Leave empty for no deadline"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Emails will stop being sent after this date and time
+                </p>
               </div>
 
               <div className="flex gap-3 pt-4">
