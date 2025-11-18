@@ -187,7 +187,10 @@ export function GoalsManager({ user, onUpdate }) {
       if (user.personalities.length === 0) {
         console.warn("No personalities found for user");
       } else {
-        console.log("Personalities available:", user.personalities.length, user.personalities);
+        // Personalities loaded (debug only in development)
+        if (process.env.NODE_ENV === 'development') {
+          console.log("Personalities available:", user.personalities.length, user.personalities);
+        }
       }
     }
     fetchTones(); // Refresh tones when user changes

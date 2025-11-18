@@ -3,8 +3,16 @@ import { Mail, Sparkles, Clock, Users, Zap, CheckCircle, Star, TrendingUp, Brain
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-const REDIRECT_URL = `${window.location.origin}/dashboard`;
-const AUTH_URL = `https://maketend.com/?redirect=${encodeURIComponent(REDIRECT_URL)}`;
+// Dynamic URL configuration - uses current origin (no hardcoded URLs)
+const getFrontendUrl = () => {
+  if (typeof window !== 'undefined') {
+    return window.location.origin; // Always use current origin
+  }
+  return process.env.REACT_APP_FRONTEND_URL || ''; // Empty if not set (will use window.location.origin)
+};
+
+const REDIRECT_URL = `${getFrontendUrl()}/dashboard`;
+const AUTH_URL = `${getFrontendUrl()}/?redirect=${encodeURIComponent(REDIRECT_URL)}`;
 
 export function LandingPage({ onNavigate }) {
   const [isScrolled, setIsScrolled] = useState(false);

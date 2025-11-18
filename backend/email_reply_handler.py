@@ -554,7 +554,17 @@ CRITICAL RULES:
             )
             if original_msg and original_msg.get("message_id"):
                 # Use stored Message-ID or generate one from message ID
-                in_reply_to = original_msg.get("message_id") or f"<msg-{linked_message_id}@maketend.com>"
+                # Get email domain from environment
+                email_domain = os.getenv('EMAIL_DOMAIN')
+                if not email_domain:
+                    frontend_url = os.getenv('FRONTEND_URL', '')
+                    if frontend_url:
+                        from urllib.parse import urlparse
+                        parsed = urlparse(frontend_url)
+                        email_domain = parsed.netloc or 'tend.app'
+                    else:
+                        email_domain = 'tend.app'
+                in_reply_to = original_msg.get("message_id") or f"<msg-{linked_message_id}@{email_domain}>"
                 references = in_reply_to
         
         success, error = await send_email(

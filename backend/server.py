@@ -517,6 +517,59 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Production-ready global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Global exception handler for production.
+    Prevents sensitive information leakage and provides consistent error responses.
+    """
+    # Log the full exception with traceback for debugging
+    logger.error(
+        f"❌ Unhandled exception: {request.method} {request.url.path}",
+        exc_info=exc
+    )
+    
+    # Track the error
+    try:
+        await tracker.log_system_event(
+            event_type="error",
+            status="error",
+            details={
+                "endpoint": request.url.path,
+                "method": request.method,
+                "error_type": type(exc).__name__,
+                "error_message": str(exc)
+            }
+        )
+    except Exception:
+        pass  # Don't fail if tracking fails
+    
+    # In production, don't expose internal error details
+    is_production = os.getenv('ENVIRONMENT', '').lower() == 'production'
+    
+    if is_production:
+        # Generic error message for production
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "An internal server error occurred. Please try again later.",
+                "status": "error",
+                "request_id": getattr(request.state, 'request_id', None)
+            }
+        )
+    else:
+        # Detailed error for development
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": str(exc),
+                "error_type": type(exc).__name__,
+                "status": "error",
+                "request_id": getattr(request.state, 'request_id', None)
+            }
+        )
+
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
@@ -584,12 +637,26 @@ async def send_email(
         
         # Generate Message-ID for this email (for future threading)
         import uuid
-        message_id = f"<{str(uuid.uuid4())}@maketend.com>"
+        # Email domain for Message-ID (configurable, defaults to domain from FRONTEND_URL)
+        email_domain = os.getenv('EMAIL_DOMAIN')
+        if not email_domain:
+            # Extract domain from FRONTEND_URL if available
+            frontend_url = os.getenv('FRONTEND_URL', '')
+            if frontend_url:
+                from urllib.parse import urlparse
+                parsed = urlparse(frontend_url)
+                email_domain = parsed.netloc or 'tend.app'
+            else:
+                email_domain = 'tend.app'  # Generic fallback
+        message_id = f"<{str(uuid.uuid4())}@{email_domain}>"
         msg['Message-ID'] = message_id
         
         # Add List-Unsubscribe header for compliance
-        frontend_url = os.getenv('FRONTEND_URL', 'https://maketend.com')
-        unsubscribe_url = f"{frontend_url}/unsubscribe?email={to_email}"
+        frontend_url = os.getenv('FRONTEND_URL')
+        if not frontend_url:
+            logger.warning("⚠️ FRONTEND_URL not set - unsubscribe links may not work")
+            frontend_url = ''  # Will be empty if not set
+        unsubscribe_url = f"{frontend_url}/unsubscribe?email={to_email}" if frontend_url else f"mailto:unsubscribe@{email_domain}?subject=Unsubscribe&body=Email:{to_email}"
         msg['List-Unsubscribe'] = f"<{unsubscribe_url}>"
         msg['List-Unsubscribe-Post'] = "List-Unsubscribe=One-Click"
         
@@ -1142,23 +1209,35 @@ INPUTS:
 
 Return only the subject line."""  # noqa: E501
 
-        response = await openai_client.responses.create(
-            model="gpt-4.1-mini",
-            input=[
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
                 {
                     "role": "system",
                     "content": (
-                        "You write vivid, human email subject lines for a motivational product. "
-                        "They feel handcrafted, avoid gimmicks, refuse cliches, and never mention tone/persona names."
+                        "You are an expert at writing compelling, human email subject lines for motivational emails. "
+                        "Your subject lines:\n"
+                        "- Feel personal and handcrafted, like a friend texting you\n"
+                        "- Create curiosity without clickbait\n"
+                        "- Are specific and concrete, avoiding vague phrases\n"
+                        "- Use active voice and strong verbs\n"
+                        "- Are 40-80 characters (6-12 words)\n"
+                        "- Never mention persona names, tone names, or meta-references\n"
+                        "- Avoid cliches like 'crush it', 'game-changer', 'unlock your potential'\n"
+                        "- Feel urgent but not desperate\n\n"
+                        "Generate ONE subject line only. No quotes, no explanations."
                     ),
                 },
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.75,
-            max_output_tokens=24,
+            temperature=0.7,  # More consistent than 0.75
+            max_tokens=30,    # Increased from 24 to prevent cutoffs
+            top_p=0.9,        # Quality control
+            presence_penalty=0.3,   # Avoid repetition
+            frequency_penalty=0.3,  # Encourage variety
         )
 
-        subject = response.output_text.strip().strip('"\'')
+        subject = response.choices[0].message.content.strip().strip('"\'')
         subject = strip_emojis(subject)
         return subject if subject else fallback_subject
 
@@ -1425,7 +1504,16 @@ async def send_motivation_to_user(email: str):
         # Save to message history with message type for tracking
         message_id = str(uuid.uuid4())
         # Generate Message-ID for email threading
-        email_message_id = f"<msg-{message_id}@maketend.com>"
+        email_domain = os.getenv('EMAIL_DOMAIN')
+        if not email_domain:
+            frontend_url = os.getenv('FRONTEND_URL', '')
+            if frontend_url:
+                from urllib.parse import urlparse
+                parsed = urlparse(frontend_url)
+                email_domain = parsed.netloc or 'tend.app'
+            else:
+                email_domain = 'tend.app'
+        email_message_id = f"<msg-{message_id}@{email_domain}>"
         
         history_doc = {
             "id": message_id,
@@ -1706,7 +1794,10 @@ async def health_check():
         logger.error(f"Database health check failed: {e}")
         checks["database"] = "disconnected"
         checks["status"] = "unhealthy"
-        checks["database_error"] = str(e)
+        # Don't expose internal error details in production
+        is_production = os.getenv('ENVIRONMENT', '').lower() == 'production'
+        if not is_production:
+            checks["database_error"] = str(e)
     
     # Check OpenAI API connectivity
     try:
@@ -1724,7 +1815,10 @@ async def health_check():
         logger.error(f"OpenAI API health check failed: {e}")
         checks["openai"] = "disconnected"
         checks["status"] = "degraded"
-        checks["openai_error"] = str(e)
+        # Don't expose internal error details in production
+        is_production = os.getenv('ENVIRONMENT', '').lower() == 'production'
+        if not is_production:
+            checks["openai_error"] = str(e)
     
     # Check SMTP configuration (not actual connection, just config)
     smtp_host = os.getenv('SMTP_HOST')
@@ -1813,21 +1907,24 @@ async def sync_clerk_user(request: Request):
         else:
             # Create new user record with Clerk data
             # User will complete onboarding separately
+            user_name = f"{clerk_first_name or ''} {clerk_last_name or ''}".strip() or clerk_email.split("@")[0]
             new_user = {
                 "email": clerk_email,
                 "clerk_user_id": clerk_user_id,
-                "name": f"{clerk_first_name or ''} {clerk_last_name or ''}".strip() or clerk_email.split("@")[0],
+                "name": user_name,
                 "image_url": clerk_image_url,
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "last_active": datetime.now(timezone.utc).isoformat(),
                 "active": False,  # Will be activated after onboarding
                 "streak_count": 0,
                 "total_messages_received": 0,
+                "welcome_email_sent": False,  # Track if welcome email was sent
             }
             
             await db.users.insert_one(new_user)
             
             logger.info(f"✅ Created new user record in database: {clerk_email}")
+            logger.info(f"📧 Attempting to send welcome email to: {clerk_email}")
             
             # Track activity
             await tracker.log_user_activity(
@@ -1835,6 +1932,114 @@ async def sync_clerk_user(request: Request):
                 user_email=clerk_email,
                 details={"clerk_user_id": clerk_user_id, "sync_type": "new_user"}
             )
+            
+            # Send welcome email to new user (CRITICAL: Must send immediately after account creation)
+            welcome_email_sent = False
+            try:
+                # Get frontend URL for email links
+                frontend_url = os.getenv('FRONTEND_URL', '')
+                if not frontend_url:
+                    logger.warning(f"⚠️ FRONTEND_URL not set - welcome email link may be empty")
+                
+                welcome_subject = "Welcome to Tend! Let's Get Started"
+                welcome_html = f"""
+                <html>
+                <head>
+                    <style>
+                        body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6fb; margin: 0; padding: 0; color: #1f2933; }}
+                        .wrapper {{ max-width: 600px; margin: 32px auto; background: #ffffff; border-radius: 12px; padding: 28px 32px; box-shadow: 0 12px 30px rgba(40,52,71,0.08); }}
+                        .header {{ text-align: center; margin-bottom: 32px; }}
+                        .header h1 {{ font-size: 28px; color: #1b3a61; margin: 0 0 12px 0; }}
+                        .header p {{ font-size: 16px; color: #5a687d; margin: 0; }}
+                        .content {{ font-size: 16px; line-height: 1.6; margin: 0 0 24px 0; color: #1f2933; }}
+                        .cta {{ text-align: center; margin: 32px 0; }}
+                        .cta a {{ display: inline-block; background: #4f46e5; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; }}
+                        .steps {{ background: #f8fafc; border-radius: 8px; padding: 24px; margin: 24px 0; }}
+                        .steps h3 {{ font-size: 18px; color: #1b3a61; margin: 0 0 16px 0; }}
+                        .steps ol {{ margin: 0; padding-left: 24px; color: #1f2933; }}
+                        .steps li {{ margin-bottom: 12px; line-height: 1.6; }}
+                        .footer {{ margin-top: 32px; font-size: 13px; color: #5a687d; text-align: center; }}
+                        .signature {{ margin-top: 28px; font-size: 14px; color: #5a687d; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="wrapper">
+                        <div class="header">
+                            <h1>Welcome to Tend, {html.escape(user_name)}! 🎉</h1>
+                            <p>Your journey to consistent motivation starts now</p>
+                        </div>
+                        <div class="content">
+                            <p>We're thrilled to have you join the Tend community! You've taken the first step toward building lasting habits and achieving your goals.</p>
+                            
+                            <div class="steps">
+                                <h3>Getting Started is Easy:</h3>
+                                <ol>
+                                    <li><strong>Complete Your Profile</strong> - Tell us about your goals and what motivates you</li>
+                                    <li><strong>Choose Your Coach</strong> - Select from inspiring personalities or create your own</li>
+                                    <li><strong>Set Your Schedule</strong> - Pick when you want to receive your daily motivation</li>
+                                    <li><strong>Start Your Journey</strong> - Begin receiving personalized messages tailored just for you</li>
+                                </ol>
+                            </div>
+                            
+                            <p>Our AI-powered coach will send you personalized motivational messages based on your goals, helping you stay consistent and build momentum every single day.</p>
+                        </div>
+                        <div class="cta">
+                            <a href="{frontend_url}">Complete Your Setup →</a>
+                        </div>
+                        <div class="signature">
+                            <p>We're here to support you every step of the way.</p>
+                            <p><strong>Tend Team</strong></p>
+                        </div>
+                        <div class="footer">
+                            <p>You're receiving this email because you just created an account with Tend.</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """
+                
+                logger.info(f"📧 Sending welcome email to {clerk_email}...")
+                success, error = await send_email(clerk_email, welcome_subject, welcome_html)
+                
+                if success:
+                    welcome_email_sent = True
+                    # Update user record to mark welcome email as sent
+                    await db.users.update_one(
+                        {"email": clerk_email},
+                        {"$set": {"welcome_email_sent": True}}
+                    )
+                    logger.info(f"✅ Welcome email successfully sent to new user: {clerk_email}")
+                else:
+                    logger.error(f"❌ FAILED to send welcome email to {clerk_email}: {error}")
+                    # Log to system events for monitoring
+                    try:
+                        await tracker.log_system_event(
+                            event_type="welcome_email_failed",
+                            event_category="email",
+                            details={
+                                "user_email": clerk_email,
+                                "error": error
+                            },
+                            status="error"
+                        )
+                    except Exception:
+                        pass  # Don't fail if tracking fails
+            except Exception as e:
+                logger.error(f"❌ EXCEPTION while sending welcome email to {clerk_email}: {str(e)}", exc_info=True)
+                # Log to system events for monitoring
+                try:
+                    await tracker.log_system_event(
+                        event_type="welcome_email_exception",
+                        event_category="email",
+                        details={
+                            "user_email": clerk_email,
+                            "error": str(e)
+                        },
+                        status="error"
+                    )
+                except Exception:
+                    pass  # Don't fail if tracking fails
+                # Don't fail the user creation if email fails
             
             return {
                 "status": "success",
@@ -1932,9 +2137,24 @@ async def complete_onboarding(request: OnboardingRequest, req: Request):
         change_reason="Initial onboarding"
     )
     
+    # Convert personalities to dict format (handle both dict and Pydantic model)
+    def to_dict(p):
+        """Convert personality to dict, handling both dict and Pydantic model"""
+        if isinstance(p, dict):
+            return p
+        elif hasattr(p, 'model_dump'):
+            return p.model_dump()
+        elif hasattr(p, 'dict'):
+            return p.dict()
+        else:
+            # Fallback: try to convert to dict
+            return dict(p) if hasattr(p, '__iter__') and not isinstance(p, str) else p
+    
+    personality_dicts = [to_dict(p) for p in request.personalities]
+    
     await version_tracker.save_personality_version(
         user_email=request.email,
-        personalities=[p.model_dump() for p in request.personalities],
+        personalities=personality_dicts,
         rotation_mode=request.rotation_mode,
         changed_by="user"
     )
@@ -6778,19 +6998,178 @@ async def admin_bulk_update_users(emails: list, updates: dict):
         "matched_count": result.matched_count
     }
 
+@api_router.delete("/users/{email}")
+async def delete_user_account(email: str):
+    """Delete user account (user-facing endpoint)"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_name = user.get("name", email.split("@")[0])
+    
+    # Soft delete - mark as inactive
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"active": False, "deleted_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    # Remove scheduled jobs for this user
+    try:
+        jobs_to_remove = [job.id for job in scheduler.get_jobs() if email in job.id]
+        for job_id in jobs_to_remove:
+            scheduler.remove_job(job_id)
+        logger.info(f"✅ Removed {len(jobs_to_remove)} scheduled jobs for deleted user: {email}")
+    except Exception as e:
+        logger.warning(f"⚠️ Error removing jobs for {email}: {str(e)}")
+    
+    # Track activity
+    await tracker.log_user_activity(
+        action_type="account_deleted",
+        user_email=email,
+        details={"deleted_at": datetime.now(timezone.utc).isoformat()}
+    )
+    
+    # Send account deletion confirmation email
+    try:
+        deletion_subject = "Your Tend Account Has Been Deleted"
+        deletion_html = f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6fb; margin: 0; padding: 0; color: #1f2933; }}
+                .wrapper {{ max-width: 600px; margin: 32px auto; background: #ffffff; border-radius: 12px; padding: 28px 32px; box-shadow: 0 12px 30px rgba(40,52,71,0.08); }}
+                .header {{ text-align: center; margin-bottom: 32px; }}
+                .header h1 {{ font-size: 28px; color: #1b3a61; margin: 0 0 12px 0; }}
+                .content {{ font-size: 16px; line-height: 1.6; margin: 0 0 24px 0; color: #1f2933; }}
+                .info-box {{ background: #f8fafc; border-left: 4px solid #4f46e5; padding: 16px; margin: 24px 0; border-radius: 4px; }}
+                .info-box p {{ margin: 0; color: #5a687d; }}
+                .cta {{ text-align: center; margin: 32px 0; }}
+                .cta a {{ display: inline-block; background: #4f46e5; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; }}
+                .footer {{ margin-top: 32px; font-size: 13px; color: #5a687d; text-align: center; }}
+                .signature {{ margin-top: 28px; font-size: 14px; color: #5a687d; }}
+            </style>
+        </head>
+        <body>
+            <div class="wrapper">
+                <div class="header">
+                    <h1>Account Deletion Confirmation</h1>
+                </div>
+                <div class="content">
+                    <p>Hi {html.escape(user_name)},</p>
+                    <p>We've successfully processed your account deletion request. Your Tend account has been deactivated and all scheduled emails have been cancelled.</p>
+                    
+                    <div class="info-box">
+                        <p><strong>What happens next:</strong></p>
+                        <ul style="margin: 8px 0 0 0; padding-left: 24px;">
+                            <li>Your account is now inactive</li>
+                            <li>You will no longer receive motivational emails</li>
+                            <li>Your data will be retained for 30 days (per our data retention policy)</li>
+                            <li>After 30 days, your data will be permanently deleted</li>
+                        </ul>
+                    </div>
+                    
+                    <p>We're sorry to see you go! If you change your mind, you can always create a new account and start fresh.</p>
+                    
+                    <p>If you have any questions or concerns, please don't hesitate to reach out to our support team.</p>
+                </div>
+                <div class="cta">
+                    <a href="{os.getenv('FRONTEND_URL', '')}">Visit Tend</a>
+                </div>
+                <div class="signature">
+                    <p>Thank you for being part of the Tend community.</p>
+                    <p><strong>Tend Team</strong></p>
+                </div>
+                <div class="footer">
+                    <p>This is an automated confirmation email. If you did not request account deletion, please contact support immediately.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        success, error = await send_email(email, deletion_subject, deletion_html)
+        if success:
+            logger.info(f"✅ Account deletion email sent to: {email}")
+        else:
+            logger.warning(f"⚠️ Failed to send deletion email to {email}: {error}")
+    except Exception as e:
+        logger.error(f"❌ Error sending deletion email to {email}: {str(e)}", exc_info=True)
+        # Don't fail the deletion if email fails
+    
+    return {
+        "status": "success",
+        "message": "Account deleted successfully",
+        "email": email
+    }
+
 @api_router.delete("/admin/users/{email}", dependencies=[Depends(verify_admin)])
 async def admin_delete_user(email: str, soft_delete: bool = True):
-    """Delete a user (soft delete by default)"""
+    """Delete a user (soft delete by default) - Admin endpoint"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_name = user.get("name", email.split("@")[0])
+    
     if soft_delete:
         await db.users.update_one(
             {"email": email},
-            {"$set": {"active": False, "deleted_at": datetime.now(timezone.utc)}}
+            {"$set": {"active": False, "deleted_at": datetime.now(timezone.utc).isoformat()}}
         )
+        
+        # Remove scheduled jobs
+        try:
+            jobs_to_remove = [job.id for job in scheduler.get_jobs() if email in job.id]
+            for job_id in jobs_to_remove:
+                scheduler.remove_job(job_id)
+        except Exception as e:
+            logger.warning(f"⚠️ Error removing jobs for {email}: {str(e)}")
+        
         await tracker.log_admin_activity(
             action_type="user_deleted",
             admin_email="admin",
             details={"target_user": email, "soft_delete": True}
         )
+        
+        # Send deletion email
+        try:
+            deletion_subject = "Your Tend Account Has Been Deleted"
+            deletion_html = f"""
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6fb; margin: 0; padding: 0; color: #1f2933; }}
+                    .wrapper {{ max-width: 600px; margin: 32px auto; background: #ffffff; border-radius: 12px; padding: 28px 32px; box-shadow: 0 12px 30px rgba(40,52,71,0.08); }}
+                    .header {{ text-align: center; margin-bottom: 32px; }}
+                    .header h1 {{ font-size: 28px; color: #1b3a61; margin: 0 0 12px 0; }}
+                    .content {{ font-size: 16px; line-height: 1.6; margin: 0 0 24px 0; color: #1f2933; }}
+                    .info-box {{ background: #f8fafc; border-left: 4px solid #4f46e5; padding: 16px; margin: 24px 0; border-radius: 4px; }}
+                    .footer {{ margin-top: 32px; font-size: 13px; color: #5a687d; text-align: center; }}
+                </style>
+            </head>
+            <body>
+                <div class="wrapper">
+                    <div class="header">
+                        <h1>Account Deletion Confirmation</h1>
+                    </div>
+                    <div class="content">
+                        <p>Hi {html.escape(user_name)},</p>
+                        <p>Your Tend account has been deactivated by an administrator. All scheduled emails have been cancelled.</p>
+                        <div class="info-box">
+                            <p>If you believe this was done in error, please contact our support team.</p>
+                        </div>
+                    </div>
+                    <div class="footer">
+                        <p>Thank you for being part of the Tend community.</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+            await send_email(email, deletion_subject, deletion_html)
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to send deletion email: {str(e)}")
+        
         return {"status": "soft_deleted", "email": email}
     else:
         # Hard delete - remove all related data
@@ -8147,6 +8526,16 @@ async def update_tracking_session(
     await tracker.update_session(session_id, actions=actions, pages=pages)
     return {"status": "updated", "session_id": session_id}
 
+# Request ID Middleware for tracking
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    """Add unique request ID to each request for tracking"""
+    request_id = str(uuid.uuid4())[:8]
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
 # Activity Tracking Middleware with Enhanced Logging
 @app.middleware("http")
 async def track_api_calls(request: Request, call_next):
@@ -8156,55 +8545,90 @@ async def track_api_calls(request: Request, call_next):
     # Get client info
     client_ip = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
+    request_id = getattr(request.state, 'request_id', 'unknown')
     
-    # Log API request
-    if request.url.path.startswith("/api"):
-        logger.debug(f"🌐 API Request: {request.method} {request.url.path} (IP: {client_ip})")
+    # Log API request (only in development or for errors)
+    is_production = os.getenv('ENVIRONMENT', '').lower() == 'production'
+    if not is_production and request.url.path.startswith("/api"):
+        logger.debug(f"🌐 API Request [{request_id}]: {request.method} {request.url.path} (IP: {client_ip})")
     
     try:
-        response = await call_next(request)
+        # Add timeout for long-running requests (30 seconds)
+        response = await asyncio.wait_for(call_next(request), timeout=30.0)
         
         # Calculate response time
         response_time_ms = int((time.time() - start_time) * 1000)
         
         # Track API call
         if request.url.path.startswith("/api"):
-            # Log slow requests
+            # Log slow requests (always log)
             if response_time_ms > 1000:
-                logger.warning(f"⚠️ Slow API call: {request.method} {request.url.path} took {response_time_ms}ms")
-            elif response_time_ms > 500:
-                logger.info(f"⏱️ API call: {request.method} {request.url.path} took {response_time_ms}ms")
+                logger.warning(f"⚠️ Slow API call [{request_id}]: {request.method} {request.url.path} took {response_time_ms}ms")
+            elif response_time_ms > 500 and not is_production:
+                logger.info(f"⏱️ API call [{request_id}]: {request.method} {request.url.path} took {response_time_ms}ms")
             
-            # Log errors
+            # Log errors (always log)
             if response.status_code >= 400:
-                logger.warning(f"⚠️ API Error: {request.method} {request.url.path} returned {response.status_code}")
+                logger.warning(f"⚠️ API Error [{request_id}]: {request.method} {request.url.path} returned {response.status_code}")
             
+            try:
+                await tracker.log_api_call(
+                    endpoint=request.url.path,
+                    method=request.method,
+                    status_code=response.status_code,
+                    response_time_ms=response_time_ms,
+                    ip_address=client_ip
+                )
+            except Exception:
+                pass  # Don't fail if tracking fails
+        
+        return response
+    except asyncio.TimeoutError:
+        response_time_ms = int((time.time() - start_time) * 1000)
+        logger.error(f"⏱️ Request timeout [{request_id}]: {request.method} {request.url.path} exceeded 30s")
+        
+        # Track timeout
+        try:
             await tracker.log_api_call(
                 endpoint=request.url.path,
                 method=request.method,
-                status_code=response.status_code,
+                status_code=504,
                 response_time_ms=response_time_ms,
-                ip_address=client_ip
+                ip_address=client_ip,
+                error_message="Request timeout"
             )
+        except Exception:
+            pass
         
-        return response
+        return JSONResponse(
+            status_code=504,
+            content={
+                "detail": "Request timeout. Please try again.",
+                "status": "error",
+                "request_id": request_id
+            }
+        )
     except Exception as e:
         response_time_ms = int((time.time() - start_time) * 1000)
         
         # Log exception
-        logger.error(f"❌ API Exception: {request.method} {request.url.path} failed after {response_time_ms}ms: {str(e)}", exc_info=True)
+        logger.error(f"❌ API Exception [{request_id}]: {request.method} {request.url.path} failed after {response_time_ms}ms: {str(e)}", exc_info=True)
         
         # Track failed API call
         if request.url.path.startswith("/api"):
-            await tracker.log_api_call(
-                endpoint=request.url.path,
-                method=request.method,
-                status_code=500,
-                response_time_ms=response_time_ms,
-                ip_address=client_ip,
-                error_message=str(e)
-            )
+            try:
+                await tracker.log_api_call(
+                    endpoint=request.url.path,
+                    method=request.method,
+                    status_code=500,
+                    response_time_ms=response_time_ms,
+                    ip_address=client_ip,
+                    error_message=str(e)
+                )
+            except Exception:
+                pass
         
+        # Re-raise to let global exception handler deal with it
         raise
 
 # Include the router in the main app
@@ -8250,26 +8674,105 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
 # Add middlewares (order matters - security headers last, CORS after)
 app.add_middleware(RequestSizeLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Dynamic CORS configuration
+# Supports multiple origins for Vercel deployments
+def is_allowed_origin(origin: str) -> bool:
+    """Check if origin is allowed, supporting Vercel preview deployments"""
+    if not origin:
+        return False
+    
+    cors_origins_env = os.environ.get('CORS_ORIGINS', '*')
+    
+    # Allow all origins if set to '*'
+    if cors_origins_env == '*':
+        return True
+    
+    # Get allowed origins list
+    allowed_origins = [o.strip() for o in cors_origins_env.split(',') if o.strip()]
+    
+    # Check exact match
+    if origin in allowed_origins:
+        return True
+    
+    # Check Vercel preview deployments (*.vercel.app pattern)
+    if origin.endswith('.vercel.app'):
+        # Check if *.vercel.app is in allowed origins
+        if any('*.vercel.app' in allowed or 'vercel.app' in allowed for allowed in allowed_origins):
+            return True
+    
+    # Always allow localhost in development
+    if os.environ.get('ENVIRONMENT') != 'production':
+        if origin.startswith('http://localhost:') or origin.startswith('http://127.0.0.1:'):
+            return True
+    
+    return False
 
-# Configure comprehensive logging for debugging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
+class DynamicCORSMiddleware(BaseHTTPMiddleware):
+    """Custom CORS middleware that supports dynamic origin checking"""
+    async def dispatch(self, request: StarletteRequest, call_next):
+        origin = request.headers.get("origin")
+        
+        if request.method == "OPTIONS":
+            # Handle preflight requests
+            if is_allowed_origin(origin):
+                response = JSONResponse(content={})
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+                response.headers["Access-Control-Allow-Headers"] = "*"
+                response.headers["Access-Control-Allow-Credentials"] = "true"
+                response.headers["Access-Control-Max-Age"] = "3600"
+                return response
+            else:
+                return JSONResponse(
+                    content={"detail": "Origin not allowed"},
+                    status_code=403
+                )
+        
+        response = await call_next(request)
+        
+        # Add CORS headers to response
+        if is_allowed_origin(origin):
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+        
+        return response
 
-# Set log levels for different components
-logger.setLevel(logging.INFO)
+# Use custom CORS middleware for dynamic origin support
+app.add_middleware(DynamicCORSMiddleware)
+
+# Configure production-ready logging
+def setup_logging():
+    """Setup logging based on environment"""
+    is_production = os.getenv('ENVIRONMENT', '').lower() == 'production'
+    
+    if is_production:
+        # Production: INFO level, structured format
+        log_level = logging.INFO
+        log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    else:
+        # Development: DEBUG level, detailed format
+        log_level = logging.DEBUG
+        log_format = '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+    
+    logging.basicConfig(
+        level=log_level,
+        format=log_format,
+        handlers=[
+            logging.StreamHandler(sys.stdout)
+        ],
+        force=True  # Override any existing configuration
+    )
+    
+    # Set specific logger levels
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING if is_production else logging.INFO)
+    logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+    logging.getLogger("apscheduler").setLevel(logging.WARNING if is_production else logging.INFO)
+    
+    return logging.getLogger(__name__)
+
+logger = setup_logging()
 
 async def create_email_job(user_email: str):
     """Scheduled job executed by AsyncIOScheduler within the main event loop."""
@@ -9008,6 +9511,7 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Tend API...")
     logger.info("=" * 60)
     
+    # Startup phase
     try:
         # Validate environment variables on startup
         try:
@@ -9100,9 +9604,19 @@ async def lifespan(app: FastAPI):
         logger.info("=" * 60)
         logger.info("✅ Tend API is ready and running!")
         logger.info("=" * 60)
-
+    except Exception as e:
+        logger.error(f"❌ Startup error: {e}", exc_info=True)
+        raise
+    
+    # Application running phase - yield control
+    try:
         yield
-        
+    except asyncio.CancelledError:
+        # Handle graceful cancellation (e.g., KeyboardInterrupt)
+        logger.info("⚠️ Application shutdown requested (cancellation)")
+        # Don't re-raise - let finally block handle cleanup
+    
+    # Shutdown phase
     finally:
         shutdown_start = time.time()
         logger.info("=" * 60)
@@ -9110,8 +9624,11 @@ async def lifespan(app: FastAPI):
         
         try:
             logger.info("Stopping scheduler...")
-            scheduler.shutdown()
+            if scheduler.running:
+                scheduler.shutdown(wait=False)  # Don't wait for jobs to finish
             logger.info("✅ Scheduler stopped")
+        except asyncio.CancelledError:
+            logger.warning("⚠️ Scheduler shutdown cancelled (ignoring)")
         except Exception as e:
             logger.warning(f"⚠️ Scheduler shutdown warning: {e}")
         
@@ -9119,6 +9636,8 @@ async def lifespan(app: FastAPI):
             logger.info("Closing database connection...")
             client.close()
             logger.info("✅ Database connection closed")
+        except asyncio.CancelledError:
+            logger.warning("⚠️ Database close cancelled (ignoring)")
         except Exception as e:
             logger.warning(f"⚠️ Database close warning: {e}")
         

@@ -40,8 +40,10 @@ import { sanitizeUser, sanitizeMessages, sanitizeFilter } from "@/utils/dataSani
 // IST timezone constant for admin dashboard
 const ADMIN_TIMEZONE = "Asia/Kolkata";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+// Import dynamic API configuration
+import API_CONFIG from './config/api';
+const BACKEND_URL = API_CONFIG.BACKEND_URL;
+const API = API_CONFIG.API_BASE;
 
 const FAMOUS_PERSONALITIES = [
   // Indian Icons (10)
@@ -4039,7 +4041,10 @@ function UserApp() {
         image_url: user.imageUrl,
       });
       
-      console.log(`✅ Synced Clerk user to database: ${email}`);
+      // User synced successfully (logged in development only)
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ Synced Clerk user to database: ${email}`);
+      }
     } catch (error) {
       console.error("Failed to sync Clerk user:", error);
       // Don't show error to user - this is background sync
@@ -4061,9 +4066,27 @@ function UserApp() {
       
       // Then load user profile
       const response = await axios.get(`${API}/users/${email}`);
-      setAppUser(response.data);
+      const userData = response.data;
+      
+      // Check if user needs onboarding:
+      // - User is not active (created but onboarding not completed)
+      // - User doesn't have goals or schedule set up
+      const needsOnboardingCheck = !userData.active || 
+                                   !userData.goals || 
+                                   !userData.schedule || 
+                                   !userData.personalities || 
+                                   userData.personalities.length === 0;
+      
+      if (needsOnboardingCheck) {
+        setNeedsOnboarding(true);
+        setAppUser(null);
+      } else {
+        setAppUser(userData);
+        setNeedsOnboarding(false);
+      }
     } catch (error) {
       if (error.response?.status === 404) {
+        // User doesn't exist yet - will be created by sync, show onboarding
         setNeedsOnboarding(true);
         setAppUser(null);
       } else {

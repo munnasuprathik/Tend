@@ -102,8 +102,6 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
     const sentMessages = messages.filter(m => m.type === "sent");
     const replyMessages = messages.filter(m => m.type === "reply");
     
-    console.log(`[MessageHistory] Grouping: ${sentMessages.length} sent messages, ${replyMessages.length} replies`);
-    
     // Create a map of message_id -> replies using linked_message_id
     const repliesMap = new Map();
     replyMessages.forEach(reply => {
@@ -113,7 +111,6 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
           repliesMap.set(linkedMessageId, []);
         }
         repliesMap.get(linkedMessageId).push(reply);
-        console.log(`[MessageHistory] Linked reply to message ${linkedMessageId}`);
       } else {
         // Fallback: Find the most recent sent message before this reply
         const replyTime = new Date(reply.sent_at);
@@ -129,9 +126,6 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
             repliesMap.set(matchingMessage.id, []);
           }
           repliesMap.get(matchingMessage.id).push(reply);
-          console.log(`[MessageHistory] Fallback: Linked reply to message ${matchingMessage.id} (no linked_message_id)`);
-        } else {
-          console.warn(`[MessageHistory] Could not find matching message for reply at ${reply.sent_at}`);
         }
       }
     });
@@ -146,9 +140,6 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
       ...msg,
       replies: (repliesMap.get(msg.id) || []).sort((a, b) => new Date(a.sent_at) - new Date(b.sent_at)) // Oldest first for display
     })).sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at));
-    
-    const totalReplies = grouped.reduce((sum, msg) => sum + (msg.replies?.length || 0), 0);
-    console.log(`[MessageHistory] Grouped result: ${grouped.length} messages, ${totalReplies} total replies attached`);
     
     return grouped;
   }, [messages]);
