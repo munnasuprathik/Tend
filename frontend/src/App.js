@@ -44,15 +44,42 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 const FAMOUS_PERSONALITIES = [
-  "Elon Musk", "Steve Jobs", "A.P.J. Abdul Kalam", "Oprah Winfrey",
-  "Nelson Mandela", "Maya Angelou", "Tony Robbins", "Brené Brown",
-  "Simon Sinek", "Michelle Obama", "Warren Buffett", "Richard Branson"
+  // Indian Icons (10)
+  "A.P.J. Abdul Kalam",
+  "Ratan Tata",
+  "Sadhguru",
+  "M.S. Dhoni",
+  "Swami Vivekananda",
+  "Sudha Murty",
+  "Sachin Tendulkar",
+  "Shah Rukh Khan",
+  "Narayana Murthy",
+  "Kiran Mazumdar-Shaw",
+  // Indian-Origin Tech Leaders (2)
+  "Sundar Pichai",
+  "Satya Nadella",
+  // International Icons (7)
+  "Elon Musk",
+  "Mark Zuckerberg",
+  "Oprah Winfrey",
+  "Nelson Mandela",
+  "Tony Robbins",
+  "Michelle Obama",
+  "Denzel Washington"
 ];
 
 const TONE_OPTIONS = [
-  "Funny & Uplifting", "Friendly & Warm", "Roasting (Tough Love)",
-  "Serious & Direct", "Philosophical & Deep", "Energetic & Enthusiastic",
-  "Calm & Meditative", "Poetic & Artistic"
+  "Funny & Uplifting",
+  "Friendly & Warm",
+  "Tough Love & Real Talk",
+  "Serious & Direct",
+  "Philosophical & Reflective",
+  "Energetic & Enthusiastic",
+  "Calm & Meditative",
+  "Poetic & Artistic",
+  "Sarcastic & Witty",
+  "Coach-Like & Accountability",
+  "Storytelling & Narrative"
 ];
 
 function AuthScreen() {
@@ -146,6 +173,14 @@ function OnboardingScreen({ email, onComplete }) {
         return "UTC";
       }
     })(),
+    user_timezone: (() => {
+      try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        return typeof tz === 'string' ? tz : "UTC";
+      } catch {
+        return "UTC";
+      }
+    })(), // NEW: Global timezone for dashboard
     deadline: null
   });
   const [loading, setLoading] = useState(false);
@@ -251,7 +286,8 @@ function OnboardingScreen({ email, onComplete }) {
         goals: formData.goals,
         personalities: formData.personalities,
         rotation_mode: "sequential",
-        schedule
+        schedule,
+        user_timezone: formData.user_timezone || formData.timezone || "UTC"  // NEW: Send global timezone
       });
 
       toast.success("🎉 Welcome to InboxInspire!", {
@@ -475,6 +511,56 @@ function OnboardingScreen({ email, onComplete }) {
         {step === 4 && (
           <Card className="shadow-xl">
             <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Globe className="h-5 w-5" />
+                Set Your Timezone
+              </CardTitle>
+              <CardDescription>This will be used for all dates and times across your dashboard</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div>
+                <Label className="flex items-center gap-2 mb-2">
+                  <Globe className="h-4 w-4" />
+                  Your Timezone
+                </Label>
+                <p className="text-sm text-muted-foreground mb-3">
+                  All dates, times, streaks, and analytics will be displayed in this timezone.
+                </p>
+                <Select 
+                  value={safeSelectValue(formData.user_timezone, (() => {
+                    try {
+                      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                      return typeof tz === 'string' ? tz : "UTC";
+                    } catch {
+                      return "UTC";
+                    }
+                  })())} 
+                  onValueChange={(value) => setFormData({...formData, user_timezone: value})}
+                >
+                  <SelectTrigger className="mt-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px]">
+                    {TIMEZONES.map((tz) => (
+                      <SelectItem key={tz.value} value={tz.value}>
+                        {tz.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <Button type="button" variant="outline" onClick={() => setStep(3)} className="flex-1">Back</Button>
+                <Button onClick={() => setStep(5)} className="flex-1">Continue</Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {step === 5 && (
+          <Card className="shadow-xl">
+            <CardHeader>
               <CardTitle>Schedule Your Inspiration</CardTitle>
               <CardDescription>When should we send your messages?</CardDescription>
             </CardHeader>
@@ -506,17 +592,13 @@ function OnboardingScreen({ email, onComplete }) {
               <div>
                 <Label className="flex items-center gap-2">
                   <Globe className="h-4 w-4" />
-                  Your Timezone
+                  Schedule Timezone
                 </Label>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Timezone for email delivery schedule (can be different from your dashboard timezone)
+                </p>
                 <Select 
-                  value={safeSelectValue(formData.timezone, (() => {
-                    try {
-                      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                      return typeof tz === 'string' ? tz : "UTC";
-                    } catch {
-                      return "UTC";
-                    }
-                  })())} 
+                  value={safeSelectValue(formData.timezone, formData.user_timezone || "UTC")} 
                   onValueChange={(value) => setFormData({...formData, timezone: value})}
                 >
                   <SelectTrigger className="mt-2">
@@ -566,7 +648,7 @@ function OnboardingScreen({ email, onComplete }) {
               </div>
 
               <div className="flex gap-3 pt-4">
-                <Button type="button" variant="outline" onClick={() => setStep(3)} className="flex-1">Back</Button>
+                <Button type="button" variant="outline" onClick={() => setStep(4)} className="flex-1">Back</Button>
                 <Button onClick={handleFinalSubmit} disabled={loading} className="flex-1" data-testid="onboarding-finish-btn">
                   {loading ? "Setting Up..." : "Complete Setup"}
                 </Button>
@@ -588,7 +670,8 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
     goals: typeof user.goals === 'string' ? user.goals : '', // Kept for backward compatibility, not editable in UI
     frequency: typeof user.schedule?.frequency === 'string' ? user.schedule.frequency : 'daily',
     time: user.schedule?.times?.[0] || (typeof user.schedule?.time === 'string' ? user.schedule.time : "09:00"),
-    active: typeof user.active === 'boolean' ? user.active : false
+    active: typeof user.active === 'boolean' ? user.active : false,
+    user_timezone: user.user_timezone || user.schedule?.timezone || "UTC"  // NEW: Global timezone
   });
   const [previewMessage, setPreviewMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -679,7 +762,8 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
     try {
       const updates = {
         name: formData.name,
-        active: formData.active
+        active: formData.active,
+        user_timezone: formData.user_timezone  // NEW: Update global timezone
       };
 
       const response = await axios.put(`${API}/users/${user.email}`, updates);
@@ -1394,6 +1478,32 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
                     disabled={!editMode}
                     className="flex-shrink-0"
                   />
+                </div>
+
+                <div className="pt-4 border-t">
+                  <Label className="text-sm sm:text-base flex items-center gap-2 mb-2">
+                    <Globe className="h-4 w-4" />
+                    Dashboard Timezone
+                  </Label>
+                  <p className="text-xs sm:text-sm text-muted-foreground mb-3">
+                    All dates, times, streaks, and analytics will be displayed in this timezone.
+                  </p>
+                  <Select 
+                    value={safeSelectValue(formData.user_timezone || user.user_timezone || user.schedule?.timezone || "UTC", "UTC")} 
+                    onValueChange={(value) => setFormData({...formData, user_timezone: value})}
+                    disabled={!editMode}
+                  >
+                    <SelectTrigger className="mt-2">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[300px]">
+                      {TIMEZONES.map((tz) => (
+                        <SelectItem key={tz.value} value={tz.value}>
+                          {tz.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {editMode && (

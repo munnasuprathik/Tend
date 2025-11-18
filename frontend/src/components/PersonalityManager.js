@@ -16,15 +16,42 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 const FAMOUS_PERSONALITIES = [
-  "Elon Musk", "Steve Jobs", "A.P.J. Abdul Kalam", "Oprah Winfrey",
-  "Nelson Mandela", "Maya Angelou", "Tony Robbins", "Brené Brown",
-  "Simon Sinek", "Michelle Obama", "Warren Buffett", "Richard Branson"
+  // Indian Icons (10)
+  "A.P.J. Abdul Kalam",
+  "Ratan Tata",
+  "Sadhguru",
+  "M.S. Dhoni",
+  "Swami Vivekananda",
+  "Sudha Murty",
+  "Sachin Tendulkar",
+  "Shah Rukh Khan",
+  "Narayana Murthy",
+  "Kiran Mazumdar-Shaw",
+  // Indian-Origin Tech Leaders (2)
+  "Sundar Pichai",
+  "Satya Nadella",
+  // International Icons (7)
+  "Elon Musk",
+  "Mark Zuckerberg",
+  "Oprah Winfrey",
+  "Nelson Mandela",
+  "Tony Robbins",
+  "Michelle Obama",
+  "Denzel Washington"
 ];
 
 const TONE_OPTIONS = [
-  "Funny & Uplifting", "Friendly & Warm", "Roasting (Tough Love)",
-  "Serious & Direct", "Philosophical & Deep", "Energetic & Enthusiastic",
-  "Calm & Meditative", "Poetic & Artistic"
+  "Funny & Uplifting",
+  "Friendly & Warm",
+  "Tough Love & Real Talk",
+  "Serious & Direct",
+  "Philosophical & Reflective",
+  "Energetic & Enthusiastic",
+  "Calm & Meditative",
+  "Poetic & Artistic",
+  "Sarcastic & Witty",
+  "Coach-Like & Accountability",
+  "Storytelling & Narrative"
 ];
 
 export function PersonalityManager({ user, onUpdate }) {

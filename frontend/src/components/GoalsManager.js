@@ -40,6 +40,7 @@ export function GoalsManager({ user, onUpdate }) {
   const [showModal, setShowModal] = useState(false);
   const [editingGoal, setEditingGoal] = useState(null);
   const [tones, setTones] = useState([]);
+  const [famousPersonalities, setFamousPersonalities] = useState([]);
   const [selectedGoalHistory, setSelectedGoalHistory] = useState(null);
   const [goalHistory, setGoalHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -48,16 +49,25 @@ export function GoalsManager({ user, onUpdate }) {
   // Get default schedule from user's existing schedule preferences
   const getDefaultSchedule = () => {
     if (user?.schedule) {
+      const defaultTime = user.schedule.times?.[0] || user.schedule.time || "09:00";
       return [{
         type: user.schedule.frequency || "daily",
-        time: user.schedule.times?.[0] || user.schedule.time || "09:00",
+        time: defaultTime,
+        times: user.schedule.times || [defaultTime],  // NEW: Always include times array
         timezone: user.schedule.timezone || "UTC",
         active: !user.schedule.paused,
         end_date: user.schedule.end_date || null
       }];
     }
     // Fallback defaults if no user schedule exists
-    return [{ type: "daily", time: "09:00", timezone: "UTC", active: true, end_date: null }];
+    return [{ 
+      type: "daily", 
+      time: "09:00", 
+      times: ["09:00"],  // NEW: Always include times array
+      timezone: "UTC", 
+      active: true, 
+      end_date: null 
+    }];
   };
   
   // Form state
@@ -95,17 +105,19 @@ export function GoalsManager({ user, onUpdate }) {
       const title = goalsLines[0]?.trim() || 'My Main Goal';
       const description = goalsLines.slice(1).join('\n').trim() || title; // If no description, use title as fallback
       
+      const schedulePaused = user.schedule?.paused || false;
       allGoals.unshift({
         id: 'main_goal',
         title: title,
         description: description,
         isMainGoal: true,
-        active: true,
+        active: !schedulePaused, // Active if schedule is not paused
         schedules: user.schedule ? [{
           type: user.schedule.frequency || 'daily',
           time: user.schedule.times?.[0] || user.schedule.time || '09:00',
           timezone: user.schedule.timezone || 'UTC',
-          active: !user.schedule.paused
+          active: !user.schedule.paused,
+          end_date: user.schedule.end_date || null
         }] : [],
         mode: 'personality',
         personality_id: user.personalities?.[user.current_personality_index || 0]?.id || user.personalities?.[user.current_personality_index || 0]?.value || ''
@@ -147,10 +159,26 @@ export function GoalsManager({ user, onUpdate }) {
     }
   }, []);
 
+  const fetchFamousPersonalities = useCallback(async () => {
+    try {
+      const personalitiesRes = await axios.get(`${API}/famous-personalities`);
+      const personalitiesList = personalitiesRes.data?.personalities || [];
+      setFamousPersonalities(personalitiesList);
+      if (personalitiesList.length === 0) {
+        console.warn("No personalities received from API");
+      }
+    } catch (error) {
+      console.error("Failed to fetch famous personalities:", error);
+      // Set empty array on error to prevent issues
+      setFamousPersonalities([]);
+    }
+  }, []);
+
   useEffect(() => {
     fetchGoals();
     fetchTones();
-  }, [fetchGoals, fetchTones]);
+    fetchFamousPersonalities();
+  }, [fetchGoals, fetchTones, fetchFamousPersonalities]);
 
   // Refresh personalities and tones when user changes
   useEffect(() => {
@@ -176,14 +204,30 @@ export function GoalsManager({ user, onUpdate }) {
         const currentIndex = user.current_personality_index || 0;
         const currentPersonality = user.personalities[currentIndex];
         if (currentPersonality) {
-          personalityId = currentPersonality.id || currentPersonality.value || "";
+          // Prefer value (name) over ID for display
+          personalityId = currentPersonality.value || currentPersonality.name || currentPersonality.id || "";
+        }
+      }
+      
+      // If personalityId is a UUID, try to find the corresponding name from famousPersonalities or user.personalities
+      if (personalityId && !famousPersonalities.includes(personalityId)) {
+        // Check if it's a UUID (looks like one)
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(personalityId);
+        if (isUUID) {
+          // Find the personality name from user.personalities
+          const foundPersonality = user.personalities?.find(p => 
+            p.id === personalityId || p.value === personalityId || p.name === personalityId
+          );
+          if (foundPersonality) {
+            personalityId = foundPersonality.value || foundPersonality.name || personalityId;
+          }
         }
       }
       
       if (!personalityId && user.personalities && user.personalities.length > 0) {
-        // Use ID if available, otherwise use value
+        // Use value (name) if available, otherwise use ID
         const firstPersonality = user.personalities[0];
-        personalityId = firstPersonality.id || firstPersonality.value || "";
+        personalityId = firstPersonality.value || firstPersonality.name || firstPersonality.id || "";
       }
       
       // For main goal, parse description from user.goals if not already set
@@ -198,18 +242,24 @@ export function GoalsManager({ user, onUpdate }) {
       // For main goal, get schedule from user.schedule
       let schedules = goal.schedules || [];
       if ((goal.isMainGoal || goal.id === 'main_goal') && user.schedule) {
+        const mainTime = user.schedule.times?.[0] || user.schedule.time || '09:00';
         schedules = [{
           type: user.schedule.frequency || 'daily',
-          time: user.schedule.times?.[0] || user.schedule.time || '09:00',
+          time: mainTime,
+          times: user.schedule.times || [mainTime],  // NEW: Always include times array
           timezone: user.schedule.timezone || 'UTC',
           active: !user.schedule.paused,
           end_date: user.schedule.end_date || null
         }];
       }
-      // Ensure all schedules have end_date field
+      // Ensure all schedules have end_date field and times array
       schedules = schedules.map(s => ({
         ...s,
-        end_date: s.end_date || null
+        end_date: s.end_date || null,
+        // Ensure times array exists - use times if available, otherwise create from time
+        times: s.times && s.times.length > 0 ? s.times : (s.time ? [s.time] : ["09:00"]),
+        // Keep time for backward compatibility
+        time: s.time || s.times?.[0] || "09:00"
       }));
       
       // For main goal, get send_time_windows from user.schedule
@@ -271,6 +321,7 @@ export function GoalsManager({ user, onUpdate }) {
           { 
             type: defaultSchedule.type, 
             time: defaultSchedule.time, 
+            times: defaultSchedule.times || [defaultSchedule.time || "09:00"],  // NEW: Always include times array
             timezone: defaultSchedule.timezone, 
             active: defaultSchedule.active, 
             end_date: defaultSchedule.end_date 
@@ -315,7 +366,14 @@ export function GoalsManager({ user, onUpdate }) {
 
   const handleUpdateSchedule = (index, field, value) => {
     const newSchedules = [...formData.schedules];
-    newSchedules[index] = { ...newSchedules[index], [field]: value };
+    const updatedSchedule = { ...newSchedules[index], [field]: value };
+    
+    // If updating time, also update times array
+    if (field === "time" && value) {
+      updatedSchedule.times = [value];
+    }
+    
+    newSchedules[index] = updatedSchedule;
     setFormData({ ...formData, schedules: newSchedules });
   };
 
@@ -363,7 +421,8 @@ export function GoalsManager({ user, onUpdate }) {
         custom_text: formData.mode === "custom" ? formData.custom_text.trim() : null,
         schedules: formData.schedules.map(s => ({
           type: s.type,
-          time: s.time,
+          time: s.time,  // Keep for backward compatibility
+          times: s.times || [s.time || "09:00"],  // NEW: Always include times array
           timezone: s.timezone,
           weekdays: s.type === "weekly" ? (s.weekdays || [0]) : null,
           monthly_dates: s.type === "monthly" ? (s.monthly_dates || [1]) : null,
@@ -540,17 +599,36 @@ export function GoalsManager({ user, onUpdate }) {
   };
 
   const handleDelete = async (goalId) => {
-    if (!window.confirm("Are you sure you want to delete this goal? This will cancel all pending messages.")) {
+    const isPrimaryGoal = goalId === 'main_goal';
+    const confirmMessage = isPrimaryGoal 
+      ? "Are you sure you want to delete your primary goal? This will clear your main goal and cancel all pending messages."
+      : "Are you sure you want to delete this goal? This will cancel all pending messages.";
+    
+    if (!window.confirm(confirmMessage)) {
       return;
     }
 
     setLoading(true);
     try {
-      await axios.delete(`${API}/users/${user.email}/goals/${goalId}`);
-      toast.success("🗑️ Goal Deleted", {
-        description: "The goal has been removed. You can always create a new one!",
-        duration: 3000,
-      });
+      if (isPrimaryGoal) {
+        // For primary goal, clear user's goals field
+        await axios.put(`${API}/users/${user.email}`, {
+          goals: "",
+          schedule: null
+        });
+        toast.success("🗑️ Primary Goal Deleted", {
+          description: "Your primary goal has been removed. You can always create a new one!",
+          duration: 3000,
+        });
+      } else {
+        // For regular goals, use the delete endpoint
+        await axios.delete(`${API}/users/${user.email}/goals/${goalId}`);
+        toast.success("🗑️ Goal Deleted", {
+          description: "The goal has been removed. You can always create a new one!",
+          duration: 3000,
+        });
+      }
+      
       fetchGoals();
       
       // Refresh user data and pass to onUpdate
@@ -564,6 +642,7 @@ export function GoalsManager({ user, onUpdate }) {
       }
     } catch (error) {
       toast.error("Failed to delete goal");
+      console.error("Delete error:", error);
     } finally {
       setLoading(false);
     }
@@ -572,9 +651,24 @@ export function GoalsManager({ user, onUpdate }) {
   const handleToggleActive = async (goal) => {
     setLoading(true);
     try {
-      await axios.put(`${API}/users/${user.email}/goals/${goal.id}`, {
-        active: !goal.active
-      });
+      const isPrimaryGoal = goal.id === 'main_goal' || goal.isMainGoal;
+      
+      if (isPrimaryGoal) {
+        // For primary goal, update user's schedule paused status
+        const currentSchedule = user.schedule || {};
+        await axios.put(`${API}/users/${user.email}`, {
+          schedule: {
+            ...currentSchedule,
+            paused: goal.active // If currently active, pause it; if paused, activate it
+          }
+        });
+      } else {
+        // For regular goals, use the goals endpoint
+        await axios.put(`${API}/users/${user.email}/goals/${goal.id}`, {
+          active: !goal.active
+        });
+      }
+      
       if (!goal.active) {
         toast.success("✨ Goal Activated!", {
           description: "This goal is now active and will send you motivational emails!",
@@ -605,6 +699,7 @@ export function GoalsManager({ user, onUpdate }) {
       }
     } catch (error) {
       toast.error("Failed to update goal");
+      console.error("Toggle active error:", error);
     } finally {
       setLoading(false);
     }
@@ -742,10 +837,10 @@ export function GoalsManager({ user, onUpdate }) {
                   {formData.mode === "personality" && (
                     <div className="space-y-2">
                       <Label className="text-base sm:text-lg font-semibold">Select Personality *</Label>
-                      {!user.personalities || user.personalities.length === 0 ? (
+                      {famousPersonalities.length === 0 ? (
                         <div className="mt-1 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                           <p className="text-sm sm:text-base text-yellow-800">
-                            No personalities found. Please add personalities first in the Goals section.
+                            Loading personalities...
                           </p>
                         </div>
                       ) : (
@@ -758,44 +853,41 @@ export function GoalsManager({ user, onUpdate }) {
                             className="mt-1"
                           >
                             <SelectTrigger className="text-base">
-                              <SelectValue placeholder="Choose a personality" />
+                              <SelectValue placeholder="Choose a personality">
+                                {(() => {
+                                  // Display the personality name, not the ID
+                                  const selectedPersonality = formData.personality_id;
+                                  if (!selectedPersonality) return "Choose a personality";
+                                  // If it's already a name in famousPersonalities, use it
+                                  if (famousPersonalities.includes(selectedPersonality)) {
+                                    return selectedPersonality;
+                                  }
+                                  // If it's a UUID, try to find the name
+                                  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedPersonality);
+                                  if (isUUID && user.personalities) {
+                                    const foundPersonality = user.personalities.find(p => 
+                                      p.id === selectedPersonality || p.value === selectedPersonality || p.name === selectedPersonality
+                                    );
+                                    if (foundPersonality) {
+                                      return foundPersonality.value || foundPersonality.name || selectedPersonality;
+                                    }
+                                  }
+                                  // Fallback: return as-is (might be a name we don't recognize)
+                                  return selectedPersonality;
+                                })()}
+                              </SelectValue>
                             </SelectTrigger>
                             <SelectContent className="max-h-[300px] overflow-y-auto">
-                              {user.personalities && user.personalities.length > 0 ? (
-                                (() => {
-                                  // Filter out any null/undefined personalities and ensure uniqueness
-                                  const validPersonalities = user.personalities.filter(p => p && (p.id || p.value || p.name));
-                                  const seenValues = new Set();
-                                  const uniquePersonalities = validPersonalities.filter(p => {
-                                    const value = p.id || p.value || p.name;
-                                    if (!value || seenValues.has(value)) {
-                                      return false; // Skip duplicates and empty values
-                                    }
-                                    seenValues.add(value);
-                                    return true;
-                                  });
-                                  
-                                  if (uniquePersonalities.length === 0) {
-                                    return <SelectItem value="" disabled>No personalities available</SelectItem>;
-                                  }
-                                  
-                                  return uniquePersonalities.map((p, index) => {
-                                    // Use ID if available, otherwise use value, otherwise use name
-                                    const itemValue = String(p.id || p.value || p.name || `personality_${index}`);
-                                    const displayName = p.value || p.name || p.id || `Personality ${index + 1}`;
-                                    // Ensure unique key - use combination of index and value (stable key)
-                                    const uniqueKey = `personality-${index}-${itemValue}`;
-                                    return (
-                                      <SelectItem 
-                                        key={uniqueKey} 
-                                        value={itemValue} 
-                                        className="text-base cursor-pointer hover:bg-muted"
-                                      >
-                                        {String(displayName)}
-                                      </SelectItem>
-                                    );
-                                  });
-                                })()
+                              {famousPersonalities && famousPersonalities.length > 0 ? (
+                                famousPersonalities.map((personality) => (
+                                  <SelectItem 
+                                    key={personality} 
+                                    value={personality} 
+                                    className="text-base cursor-pointer hover:bg-muted"
+                                  >
+                                    {personality}
+                                  </SelectItem>
+                                ))
                               ) : (
                                 <SelectItem value="" disabled>No personalities available</SelectItem>
                               )}
@@ -1227,8 +1319,9 @@ export function GoalsManager({ user, onUpdate }) {
           </div>
         ) : (
           <div className="space-y-3 sm:space-y-4">
-            {allGoals.map((goal) => {
+            {allGoals.map((goal, index) => {
               const isActive = goal.active;
+              const goalNumber = index + 1;
               
               return (
                 <Card key={goal.id} className={!isActive ? "opacity-60" : ""}>
@@ -1237,7 +1330,12 @@ export function GoalsManager({ user, onUpdate }) {
                       <div className="flex-1 min-w-0 w-full sm:w-auto">
                         {/* Title and Badges - Stack on mobile */}
                         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2 sm:mb-3">
-                          <h3 className="font-semibold text-base sm:text-lg leading-snug break-words overflow-wrap-anywhere flex-1 min-w-0 order-1 sm:order-none">{goal.title || "Untitled Goal"}</h3>
+                          <div className="flex items-center gap-2 flex-1 min-w-0 order-1 sm:order-none">
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center">
+                              <span className="text-primary font-bold text-sm">#{goalNumber}</span>
+                            </div>
+                            <h3 className="font-semibold text-base sm:text-lg leading-snug break-words overflow-wrap-anywhere flex-1 min-w-0">{goal.title || "Untitled Goal"}</h3>
+                          </div>
                           <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap order-2 sm:order-none">
                             {goal.isMainGoal && (
                               <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs whitespace-nowrap">
@@ -1302,60 +1400,46 @@ export function GoalsManager({ user, onUpdate }) {
                           )}
                         </div>
                       </div>
-                      {/* Action Buttons - Stack on mobile */}
+                      {/* Action Buttons - All goals have equal functionality */}
                       <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 justify-end sm:justify-start">
-                        {!goal.isMainGoal && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleViewHistory(goal)}
-                              className="h-9 w-9 sm:h-8 sm:w-8 p-0"
-                            >
-                              <History className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleToggleActive(goal)}
-                              disabled={loading}
-                              className="h-9 w-9 sm:h-8 sm:w-8 p-0"
-                            >
-                              {isActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                            </Button>
-                          </>
-                        )}
-                        {!goal.isMainGoal && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleOpenModal(goal)}
-                              className="h-9 w-9 sm:h-8 sm:w-8 p-0"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDelete(goal.id)}
-                              disabled={loading}
-                              className="h-9 w-9 sm:h-8 sm:w-8 p-0"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </>
-                        )}
-                        {goal.isMainGoal && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenModal(goal)}
-                            className="h-9 w-9 sm:h-8 sm:w-8 p-0"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleViewHistory(goal)}
+                          className="h-9 w-9 sm:h-8 sm:w-8 p-0"
+                          title="View message history"
+                        >
+                          <History className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleToggleActive(goal)}
+                          disabled={loading}
+                          className="h-9 w-9 sm:h-8 sm:w-8 p-0"
+                          title={isActive ? "Pause goal" : "Activate goal"}
+                        >
+                          {isActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenModal(goal)}
+                          className="h-9 w-9 sm:h-8 sm:w-8 p-0"
+                          title="Edit goal"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(goal.id)}
+                          disabled={loading}
+                          className="h-9 w-9 sm:h-8 sm:w-8 p-0 text-destructive hover:text-destructive"
+                          title="Delete goal"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                   </CardContent>

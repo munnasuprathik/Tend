@@ -26,10 +26,11 @@ import time
 import sys
 from pathlib import Path
 
-# Add backend directory to Python path for imports
+# Add parent directory to Python path for imports (so backend can be imported as module)
 backend_dir = Path(__file__).parent
-if str(backend_dir) not in sys.path:
-    sys.path.insert(0, str(backend_dir))
+parent_dir = backend_dir.parent
+if str(parent_dir) not in sys.path:
+    sys.path.insert(0, str(parent_dir))
 
 from activity_tracker import ActivityTracker
 from version_tracker import VersionTracker
@@ -41,362 +42,83 @@ import html
 import json
 import random
 
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
-
-
-def get_env(key: str, default: Optional[str] = None) -> str:
-    """
-    Fetch an environment variable, optionally falling back to a provided default.
-
-    If no value is present and no default is given, a RuntimeError is raised with
-    guidance for local development.
-    """
-    value = os.getenv(key)
-    if value:
-        return value
-
-    if default is not None:
-        warnings.warn(
-            f"Environment variable '{key}' not set. Falling back to default value.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        return default
-
-    raise RuntimeError(
-        f"Missing required environment variable '{key}'. "
-        "Set it in your shell or define it in backend/.env before starting the server."
+# Import from new modular structure
+# Try absolute import first (when running from parent), fallback to relative (when running from backend/)
+try:
+    from backend.config import (
+        db, openai_client, TAVILY_API_KEY, TAVILY_SEARCH_URL, 
+        personality_voice_cache, get_env, client
+    )
+    from backend.constants import (
+        MESSAGE_TYPES as message_types,
+        PERSONALITY_BLUEPRINTS,
+        EMOTIONAL_ARCS,
+        ANALOGY_PROMPTS,
+        FRIENDLY_DARES,
+        EMOJI_REGEX,
+        DEFAULT_ACHIEVEMENTS
+    )
+    from backend.models import (
+        PersonalityType, UserProfile, LoginRequest, VerifyTokenRequest,
+        OnboardingRequest, UserProfileUpdate, UserSession, UserAnalytics,
+        MessageFeedback, MessageFeedbackCreate, MessageHistory,
+        MessageGenRequest, MessageGenResponse,
+        SendTimeWindow, GoalSchedule, GoalCreateRequest, GoalUpdateRequest, GoalMessage,
+        PersonaResearch,
+        EmailLog, BroadcastRequest, AlertConfig, Achievement, GoalProgress,
+        MessageFavorite, MessageCollection, BulkUserActionRequest, BulkEmailRequest,
+        CustomPersonalityRequest, CustomPersonalityConversation, CustomPersonalityProfile,
+        CustomPersonalityChatRequest, CustomPersonalityChatResponse,
+        CustomPersonalityResearchRequest, CustomPersonalityResearchResponse,
+        CustomPersonalityConfirmRequest, CustomPersonalityConfirmResponse,
+        CustomPersonalityListItem, UserCustomPersonalitiesResponse
+    )
+    from backend.utils import (
+        strip_emojis, extract_interactive_sections, redact_sensitive_info,
+        check_profanity, check_impersonation, calculate_similarity,
+        render_email_html, generate_interactive_defaults, resolve_streak_badge,
+        fallback_subject_line, derive_goal_theme, cleanup_message_text
+    )
+except ImportError:
+    # Fallback to relative imports when running from backend directory
+    from config import (
+        db, openai_client, TAVILY_API_KEY, TAVILY_SEARCH_URL, 
+        personality_voice_cache, get_env, client
+    )
+    from constants import (
+        MESSAGE_TYPES as message_types,
+        PERSONALITY_BLUEPRINTS,
+        EMOTIONAL_ARCS,
+        ANALOGY_PROMPTS,
+        FRIENDLY_DARES,
+        EMOJI_REGEX,
+        DEFAULT_ACHIEVEMENTS
+    )
+    from models import (
+        PersonalityType, UserProfile, LoginRequest, VerifyTokenRequest,
+        OnboardingRequest, UserProfileUpdate, UserSession, UserAnalytics,
+        MessageFeedback, MessageFeedbackCreate, MessageHistory,
+        MessageGenRequest, MessageGenResponse,
+        SendTimeWindow, GoalSchedule, GoalCreateRequest, GoalUpdateRequest, GoalMessage,
+        PersonaResearch,
+        EmailLog, BroadcastRequest, AlertConfig, Achievement, GoalProgress,
+        MessageFavorite, MessageCollection, BulkUserActionRequest, BulkEmailRequest,
+        CustomPersonalityRequest, CustomPersonalityConversation, CustomPersonalityProfile,
+        CustomPersonalityChatRequest, CustomPersonalityChatResponse,
+        CustomPersonalityResearchRequest, CustomPersonalityResearchResponse,
+        CustomPersonalityConfirmRequest, CustomPersonalityConfirmResponse,
+        CustomPersonalityListItem, UserCustomPersonalitiesResponse
+    )
+    from utils import (
+        strip_emojis, extract_interactive_sections, redact_sensitive_info,
+        check_profanity, check_impersonation, calculate_similarity,
+        render_email_html, generate_interactive_defaults, resolve_streak_badge,
+        fallback_subject_line, derive_goal_theme, cleanup_message_text
     )
 
 
-# MongoDB connection
-mongo_url = get_env('MONGO_URL', 'mongodb://localhost:27017')
-client = AsyncIOMotorClient(mongo_url)
-db = client[get_env('DB_NAME', 'inbox_inspire')]
-
-# OpenAI client
-openai_client = AsyncOpenAI(api_key=get_env('OPENAI_API_KEY'))
-
-# Tavily research
-TAVILY_API_KEY = os.getenv('TAVILY_API_KEY')
-TAVILY_SEARCH_URL = "https://api.tavily.com/search"
-
-# Cache for personality voice descriptions
-personality_voice_cache: Dict[str, str] = {}
-
-message_types = [
-    "motivational_story",
-    "action_challenge",
-    "mindset_shift",
-    "accountability_prompt",
-    "celebration_message",
-    "real_world_example"
-]
-
-PERSONALITY_BLUEPRINTS: Dict[str, List[str]] = {
-    "famous": [
-        "Open with a quick scene that person would comment on, deliver an unexpected insight in their voice, finish with a decisive micro-challenge.",
-        "Share a short true-to-life anecdote the person would tell, highlight the lesson in their trademark style, close with an energizing promise."
-    ],
-    "tone": [
-        "Begin with an emotion check-in that matches the tone, offer one vivid image, end with a grounded next step.",
-        "Start with empathy, transition into a clear observation, and close with a gentle but firm call to action."
-    ],
-    "custom": [
-        "Start with a heartfelt acknowledgement, reinforce their values with a fresh metaphor, end with a conversational nudge.",
-        "Kick off with an encouraging statement, weave in a relatable micro-story, wrap up with one specific challenge."
-    ]
-}
-
-EMOTIONAL_ARCS = [
-    "Spark curiosity → Reflect on their journey → Deliver a laser-focused action.",
-    "Recognize a recent win → Surface a friction point → Offer a bold reframe.",
-    "Empathize with their current pace → Introduce a surprising observation → Issue a confident next move."
-]
-
-ANALOGY_PROMPTS = [
-    "Connect their current sprint to an unexpected domain such as jazz improvisation, space exploration, or world-class cuisine.",
-    "Compare their progress to a craftsperson honing a single stroke - keep it vivid but concise.",
-    "Use a metaphor from sports or art that aligns with their goals, but do not mention the word metaphor."
-]
-
-FRIENDLY_DARES = [
-    "When you complete today's action, reply with a single-word headline for the feeling.",
-    "Shoot back two words tonight: one win, one obstacle.",
-    "Drop me a note with the headline of your day once you execute.",
-    "When you're done, tell me the song that was playing in your head."
-]
-
-EMOJI_REGEX = re.compile(
-    "["
-    "\U0001F300-\U0001F6FF"
-    "\U0001F700-\U0001F77F"
-    "\U0001F780-\U0001F7FF"
-    "\U0001F800-\U0001F8FF"
-    "\U0001F900-\U0001F9FF"
-    "\U0001FA00-\U0001FAFF"
-    "\U00002600-\U000026FF"
-    "\U00002700-\U000027BF"
-    "\U0001F1E6-\U0001F1FF"
-    "]+"
-)
-
-
-def strip_emojis(text: Optional[str]) -> Optional[str]:
-    if text is None:
-        return None
-    return EMOJI_REGEX.sub("", text)
-
-
-def extract_interactive_sections(message: str) -> tuple[str, List[str], List[str]]:
-    """Split the LLM output into core message, interactive questions, and quick reply prompts."""
-    header = "INTERACTIVE CHECK-IN:"
-    quick_header = "QUICK REPLY PROMPT:"
-
-    core_message = message
-    check_in_lines: List[str] = []
-    quick_reply_lines: List[str] = []
-
-    if header in message:
-        core_message, remainder = message.split(header, 1)
-        core_message = core_message.strip()
-        remainder = remainder.strip()
-
-        if quick_header in remainder:
-            check_in_block, quick_block = remainder.split(quick_header, 1)
-        else:
-            check_in_block, quick_block = remainder, ""
-
-        check_in_lines = [
-            strip_emojis(line.strip(" -*\t"))
-            for line in check_in_block.strip().splitlines()
-            if line.strip()
-        ]
-        quick_reply_lines = [
-            strip_emojis(line.strip(" -*\t"))
-            for line in quick_block.strip().splitlines()
-            if line.strip()
-        ]
-    else:
-        core_message = message.strip()
-
-    return core_message, check_in_lines, quick_reply_lines
-
-
-# Achievement definitions - stored in DB, initialized on startup
-DEFAULT_ACHIEVEMENTS = [
-    {
-        "id": "first_streak",
-        "name": "Getting Started",
-        "description": "Maintain a 3-day streak",
-        "icon_name": "Sprout",
-        "category": "streak",
-        "requirement": {"type": "streak", "value": 3},
-        "priority": 1,
-        "show_on_home": True
-    },
-    {
-        "id": "week_warrior",
-        "name": "Week Warrior",
-        "description": "Maintain a 7-day streak",
-        "icon_name": "Flame",
-        "category": "streak",
-        "requirement": {"type": "streak", "value": 7},
-        "priority": 2,
-        "show_on_home": True
-    },
-    {
-        "id": "month_master",
-        "name": "Month Master",
-        "description": "Maintain a 30-day streak",
-        "icon_name": "Zap",
-        "category": "streak",
-        "requirement": {"type": "streak", "value": 30},
-        "priority": 3,
-        "show_on_home": True
-    },
-    {
-        "id": "century_club",
-        "name": "Century Club",
-        "description": "Maintain a 100-day streak",
-        "icon_name": "Trophy",
-        "category": "streak",
-        "requirement": {"type": "streak", "value": 100},
-        "priority": 4,
-        "show_on_home": True
-    },
-    {
-        "id": "first_message",
-        "name": "First Step",
-        "description": "Receive your first message",
-        "icon_name": "Mail",
-        "category": "messages",
-        "requirement": {"type": "messages", "value": 1},
-        "priority": 1,
-        "show_on_home": True
-    },
-    {
-        "id": "message_collector",
-        "name": "Message Collector",
-        "description": "Receive 50 messages",
-        "icon_name": "BookOpen",
-        "category": "messages",
-        "requirement": {"type": "messages", "value": 50},
-        "priority": 2,
-        "show_on_home": False
-    },
-    {
-        "id": "century_messages",
-        "name": "Century Messages",
-        "description": "Receive 100 messages",
-        "icon_name": "Book",
-        "category": "messages",
-        "requirement": {"type": "messages", "value": 100},
-        "priority": 3,
-        "show_on_home": False
-    },
-    {
-        "id": "feedback_enthusiast",
-        "name": "Feedback Enthusiast",
-        "description": "Rate 10 messages",
-        "icon_name": "Star",
-        "category": "engagement",
-        "requirement": {"type": "feedback_count", "value": 10},
-        "priority": 2,
-        "show_on_home": False
-    },
-    {
-        "id": "goal_setter",
-        "name": "Goal Setter",
-        "description": "Set your first goal",
-        "icon_name": "Target",
-        "category": "goals",
-        "requirement": {"type": "has_goal", "value": True},
-        "priority": 1,
-        "show_on_home": True
-    },
-    {
-        "id": "goal_achiever",
-        "name": "Goal Achiever",
-        "description": "Complete a goal",
-        "icon_name": "CheckCircle",
-        "category": "goals",
-        "requirement": {"type": "goal_completed", "value": 1},
-        "priority": 2,
-        "show_on_home": True
-    },
-    {
-        "id": "early_bird",
-        "name": "Early Bird",
-        "description": "Receive messages for 5 consecutive days",
-        "icon_name": "Clock",
-        "category": "consistency",
-        "requirement": {"type": "consecutive_days", "value": 5},
-        "priority": 1,
-        "show_on_home": True
-    },
-    {
-        "id": "dedicated_learner",
-        "name": "Dedicated Learner",
-        "description": "Receive messages for 14 consecutive days",
-        "icon_name": "BookOpen",
-        "category": "consistency",
-        "requirement": {"type": "consecutive_days", "value": 14},
-        "priority": 2,
-        "show_on_home": True
-    },
-    {
-        "id": "feedback_master",
-        "name": "Feedback Master",
-        "description": "Rate 25 messages",
-        "icon_name": "Star",
-        "category": "engagement",
-        "requirement": {"type": "feedback_count", "value": 25},
-        "priority": 3,
-        "show_on_home": False
-    },
-    {
-        "id": "message_milestone_250",
-        "name": "Message Milestone",
-        "description": "Receive 250 messages",
-        "icon_name": "Mail",
-        "category": "messages",
-        "requirement": {"type": "messages", "value": 250},
-        "priority": 4,
-        "show_on_home": False
-    },
-    {
-        "id": "streak_legend",
-        "name": "Streak Legend",
-        "description": "Maintain a 365-day streak",
-        "icon_name": "Flame",
-        "category": "streak",
-        "requirement": {"type": "streak", "value": 365},
-        "priority": 5,
-        "show_on_home": True
-    },
-    {
-        "id": "personality_explorer",
-        "name": "Personality Explorer",
-        "description": "Try 3 different personalities",
-        "icon_name": "Sparkles",
-        "category": "engagement",
-        "requirement": {"type": "personality_count", "value": 3},
-        "priority": 2,
-        "show_on_home": True
-    },
-    {
-        "id": "goal_crusher",
-        "name": "Goal Crusher",
-        "description": "Complete 5 goals",
-        "icon_name": "Target",
-        "category": "goals",
-        "requirement": {"type": "goal_completed", "value": 5},
-        "priority": 3,
-        "show_on_home": True
-    },
-    {
-        "id": "top_rated",
-        "name": "Top Rated",
-        "description": "Give 5-star rating to 10 messages",
-        "icon_name": "Star",
-        "category": "engagement",
-        "requirement": {"type": "five_star_ratings", "value": 10},
-        "priority": 2,
-        "show_on_home": False
-    },
-    {
-        "id": "loyal_member",
-        "name": "Loyal Member",
-        "description": "Active for 6 months",
-        "icon_name": "Award",
-        "category": "loyalty",
-        "requirement": {"type": "account_age_days", "value": 180},
-        "priority": 3,
-        "show_on_home": True
-    },
-    {
-        "id": "veteran",
-        "name": "Veteran",
-        "description": "Active for 1 year",
-        "icon_name": "Trophy",
-        "category": "loyalty",
-        "requirement": {"type": "account_age_days", "value": 365},
-        "priority": 4,
-        "show_on_home": True
-    },
-    {
-        "id": "message_architect",
-        "name": "Message Architect",
-        "description": "Receive 500 messages",
-        "icon_name": "Book",
-        "category": "messages",
-        "requirement": {"type": "messages", "value": 500},
-        "priority": 5,
-        "show_on_home": False
-    }
-]
+# Achievement definitions moved to constants.py - imported above
+# Removed duplicate utility functions - now imported from backend.utils
 
 async def initialize_achievements():
     """Initialize achievements in database if not exists, and add any missing ones"""
@@ -790,226 +512,10 @@ tracker = ActivityTracker(db)
 # Initialize Version Tracker  
 version_tracker = VersionTracker(db)
 
-# Define Models
-class PersonalityType(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    type: Literal["famous", "tone", "custom"]
-    value: str
-    active: bool = True
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class ScheduleConfig(BaseModel):
-    frequency: Literal["daily", "weekly", "monthly", "custom"]
-    times: List[str] = ["09:00"]  # Multiple times support
-    custom_days: Optional[List[str]] = None  # ["monday", "wednesday", "friday"]
-    custom_interval: Optional[int] = None  # For custom frequency: every N days
-    monthly_dates: Optional[List[str]] = None  # ["1", "15", "30"] - days of month
-    timezone: str = "UTC"
-    paused: bool = False
-    skip_next: bool = False
-    send_time_windows: Optional[List[Any]] = Field(None, max_length=5)  # Max 5 time windows for main schedule (SendTimeWindow defined later)
-
-class UserProfile(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    email: EmailStr
-    name: str
-    goals: str
-    personalities: List[PersonalityType] = []  # Multiple personalities support
-    rotation_mode: Literal["sequential", "random", "daily_fixed", "weekly_rotation", "favorite_weighted", "time_based"] = "sequential"
-    current_personality_index: int = 0
-    schedule: ScheduleConfig
-    magic_link_token: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    active: bool = True
-    last_email_sent: Optional[datetime] = None
-    streak_count: int = 0
-    total_messages_received: int = 0
-    last_active: Optional[datetime] = None
-    achievements: List[str] = []  # List of achievement IDs unlocked
-    favorite_messages: List[str] = []  # List of message IDs marked as favorite
-    message_collections: Dict[str, List[str]] = {}  # Collection name -> message IDs
-    goal_progress: Dict[str, Any] = {}  # Goal tracking data
-    content_preferences: Dict[str, Any] = {}  # User content preferences
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-
-class VerifyTokenRequest(BaseModel):
-    email: EmailStr
-    token: str
-
-class OnboardingRequest(BaseModel):
-    email: EmailStr
-    name: str
-    goals: str
-    personalities: List[PersonalityType]
-    rotation_mode: Literal["sequential", "random", "daily_fixed", "weekly_rotation", "favorite_weighted", "time_based"] = "sequential"
-    schedule: ScheduleConfig
-
-class UserProfileUpdate(BaseModel):
-    name: Optional[str] = None
-    goals: Optional[str] = None
-    personalities: Optional[List[PersonalityType]] = None
-    rotation_mode: Optional[Literal["sequential", "random", "daily_fixed", "weekly_rotation", "favorite_weighted", "time_based"]] = None
-    schedule: Optional[ScheduleConfig] = None
-    active: Optional[bool] = None
-
-class MessageFeedback(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    email: str
-    message_id: Optional[str] = None
-    personality: PersonalityType
-    rating: int  # 1-5 stars
-    feedback_text: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class MessageFeedbackCreate(BaseModel):
-    message_id: Optional[str] = None
-    rating: int
-    feedback_text: Optional[str] = None
-    personality: Optional[PersonalityType] = None
-
-class UserSession(BaseModel):
-    user_id: str
-    session_token: str
-    expires_at: datetime
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class MessageHistory(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    email: str
-    message: str
-    personality: PersonalityType
-    sent_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    rating: Optional[int] = None
-    used_fallback: Optional[bool] = False
-
-# Persona Research Models
-class PersonaResearch(BaseModel):
-    """Structured persona research data extracted from Tavily and summarized"""
-    model_config = ConfigDict(extra="ignore")
-    
-    persona_id: str
-    style_summary: str  # 1-2 lines describing style
-    verbosity_score: float = Field(ge=0.0, le=1.0)  # 0 = very concise, 1 = verbose
-    positivity_score: float = Field(ge=-1.0, le=1.0)  # -1 = negative, 1 = positive
-    top_phrases: List[str] = []  # Frequent short phrases (not verbatim quotes)
-    recent_topics: List[str] = []  # Last 3-6 topics
-    engagement_cues: List[str] = []  # Exclamations, rhetorical Qs, humor indicators
-    sample_lines: List[str] = []  # 1-2 safe paraphrased stylistic examples
-    confidence_score: float = Field(ge=0.0, le=1.0)  # How confident we are in the research
-    last_refreshed: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    cache_ttl_hours: int = 24  # Default 24 hours
-    summarizer_version: str = "1.0"
-
-class UserAnalytics(BaseModel):
-    email: str
-    streak_count: int
-    total_messages: int
-    favorite_personality: Optional[str] = None
-    avg_rating: Optional[float] = None
-    last_active: Optional[datetime] = None
-    engagement_rate: float = 0.0
-    personality_stats: dict = {}
-
-class MessageGenRequest(BaseModel):
-    goals: str
-    personality: PersonalityType
-    user_name: Optional[str] = None
-
-class MessageGenResponse(BaseModel):
-    message: str
-    used_fallback: bool = False
-
-# Multi-Goal Feature Models
-class SendTimeWindow(BaseModel):
-    """Time window for sending emails with timezone"""
-    start_time: str = Field(..., pattern=r"^([0-1][0-9]|2[0-3]):[0-5][0-9]$")  # HH:MM format
-    end_time: str = Field(..., pattern=r"^([0-1][0-9]|2[0-3]):[0-5][0-9]$")  # HH:MM format
-    timezone: str = "UTC"
-    max_sends: int = Field(1, ge=1, le=50)  # Max sends allowed in this window per day
-
-class ScheduleConfig(BaseModel):
-    frequency: Literal["daily", "weekly", "monthly", "custom"]
-    times: List[str] = ["09:00"]  # Multiple times support
-    custom_days: Optional[List[str]] = None  # ["monday", "wednesday", "friday"]
-    custom_interval: Optional[int] = None  # For custom frequency: every N days
-    monthly_dates: Optional[List[str]] = None  # ["1", "15", "30"] - days of month
-    timezone: str = "UTC"
-    paused: bool = False
-    skip_next: bool = False
-    send_time_windows: Optional[List[SendTimeWindow]] = Field(None, max_length=5)  # Max 5 time windows for main schedule
-
-class GoalSchedule(BaseModel):
-    """Schedule configuration for a goal"""
-    type: Literal["daily", "weekly", "monthly", "custom"]
-    time: str = Field(..., pattern=r"^([0-1][0-9]|2[0-3]):[0-5][0-9]$")  # HH:MM format
-    timezone: str = "UTC"
-    weekdays: Optional[List[int]] = None  # 0-6, Monday=0
-    monthly_dates: Optional[List[int]] = None  # 1-31
-    custom_cron: Optional[str] = None  # Advanced cron expression
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
-    active: bool = True
-
-class GoalCreateRequest(BaseModel):
-    """Request model for creating a goal"""
-    title: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=1000)
-    mode: Literal["personality", "tone", "custom"]
-    personality_id: Optional[str] = None
-    tone: Optional[str] = None
-    custom_text: Optional[str] = None
-    schedules: List[GoalSchedule] = Field(..., min_items=1)
-    send_limit_per_day: Optional[int] = Field(None, ge=1, le=50)
-    send_time_windows: Optional[List[SendTimeWindow]] = Field(None, max_length=5)  # Max 5 time windows
-    active: bool = True
-
-class GoalUpdateRequest(BaseModel):
-    """Request model for updating a goal"""
-    title: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=1000)
-    mode: Optional[Literal["personality", "tone", "custom"]] = None
-    personality_id: Optional[str] = None
-    tone: Optional[str] = None
-    custom_text: Optional[str] = None
-    schedules: Optional[List[GoalSchedule]] = None
-    send_limit_per_day: Optional[int] = Field(None, ge=1, le=50)
-    send_time_windows: Optional[List[SendTimeWindow]] = Field(None, max_length=5)  # Max 5 time windows
-    active: Optional[bool] = None
-
-class GoalMessage(BaseModel):
-    """Message entry for goal-based emails"""
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    goal_id: str
-    user_email: str
-    scheduled_for: datetime
-    status: Literal["pending", "sent", "failed", "skipped"] = "pending"
-    generated_subject: Optional[str] = None
-    generated_body: Optional[str] = None
-    sent_at: Optional[datetime] = None
-    delivery_response: Optional[Dict[str, Any]] = None
-    error_message: Optional[str] = None
-    retry_count: int = 0
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class EmailLog(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    email: str
-    subject: str
-    status: str
-    error_message: Optional[str] = None
-    sent_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    timezone: Optional[str] = None
-    local_sent_at: Optional[str] = None
+# Note: All Pydantic models have been moved to backend/models/ directory
+# They are imported at the top of this file from backend.models
+# All models (SendTimeWindow, GoalSchedule, GoalCreateRequest, GoalUpdateRequest, 
+# GoalMessage, EmailLog, etc.) are now imported from backend.models
 
 # Admin auth
 def verify_admin(authorization: str = Header(None)):
@@ -1017,41 +523,141 @@ def verify_admin(authorization: str = Header(None)):
         raise HTTPException(status_code=403, detail="Unauthorized")
     return True
 
-# SMTP Email Service with connection timeout
-async def send_email(to_email: str, subject: str, html_content: str) -> tuple[bool, Optional[str]]:
-    subject_line = None
-    sent_dt = None
-    try:
-        msg = MIMEMultipart('alternative')
-        msg['From'] = os.getenv('SENDER_EMAIL')
-        msg['To'] = to_email
-        msg['Subject'] = subject
-        
-        # Add List-Unsubscribe header for compliance
-        frontend_url = os.getenv('FRONTEND_URL', 'https://aipep.preview.emergentagent.com')
-        unsubscribe_url = f"{frontend_url}/unsubscribe?email={to_email}"
-        msg['List-Unsubscribe'] = f"<{unsubscribe_url}>"
-        msg['List-Unsubscribe-Post'] = "List-Unsubscribe=One-Click"
-        
-        html_part = MIMEText(html_content, 'html')
-        msg.attach(html_part)
-        
-        await aiosmtplib.send(
-            msg,
-            hostname=os.getenv('SMTP_HOST'),
-            port=int(os.getenv('SMTP_PORT')),
-            username=os.getenv('SMTP_USERNAME'),
-            password=os.getenv('SMTP_PASSWORD'),
-            use_tls=True,
-            timeout=10  # 10 second timeout
-        )
-        
-        return True, None
-    except Exception as e:
-        error_msg = str(e)
-        logging.error(f"Email send error: {error_msg}")
-        
+# SMTP Email Service with connection timeout and retry logic
+async def send_email(
+    to_email: str, 
+    subject: str, 
+    html_content: str,
+    in_reply_to: Optional[str] = None,  # NEW: For email threading
+    references: Optional[str] = None  # NEW: For email threading
+) -> tuple[bool, Optional[str]]:
+    """
+    Send email via SMTP with retry logic and improved error handling.
+    Handles Hostinger SMTP and other providers with appropriate settings.
+    """
+    smtp_host = os.getenv('SMTP_HOST')
+    smtp_port = int(os.getenv('SMTP_PORT', '465'))
+    smtp_username = os.getenv('SMTP_USERNAME')
+    smtp_password = os.getenv('SMTP_PASSWORD')
+    
+    if not all([smtp_host, smtp_username, smtp_password]):
+        error_msg = "SMTP configuration incomplete - missing SMTP_HOST, SMTP_USERNAME, or SMTP_PASSWORD"
+        logger.error(error_msg)
         return False, error_msg
+    
+    # Determine SSL/TLS settings based on port
+    # Port 465 uses SSL (implicit TLS), port 587 uses STARTTLS (explicit TLS)
+    # aiosmtplib handles this automatically, but we set use_tls=True for both
+    is_ssl_port = smtp_port == 465
+    is_starttls_port = smtp_port == 587
+    
+    msg = MIMEMultipart('alternative')
+    msg['From'] = os.getenv('SENDER_EMAIL', smtp_username)
+    msg['To'] = to_email
+    msg['Subject'] = subject
+    
+    # Add email threading headers (for proper conversation grouping)
+    if in_reply_to:
+        msg['In-Reply-To'] = in_reply_to
+    if references:
+        msg['References'] = references
+    
+    # Generate Message-ID for this email (for future threading)
+    import uuid
+    message_id = f"<{str(uuid.uuid4())}@quiccle.com>"
+    msg['Message-ID'] = message_id
+    
+    # Add List-Unsubscribe header for compliance
+    frontend_url = os.getenv('FRONTEND_URL', 'https://aipep.preview.emergentagent.com')
+    unsubscribe_url = f"{frontend_url}/unsubscribe?email={to_email}"
+    msg['List-Unsubscribe'] = f"<{unsubscribe_url}>"
+    msg['List-Unsubscribe-Post'] = "List-Unsubscribe=One-Click"
+    
+    html_part = MIMEText(html_content, 'html')
+    msg.attach(html_part)
+    
+    # Retry logic: Try up to 3 times with exponential backoff
+    max_retries = 3
+    retry_delays = [2, 5, 10]  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            # aiosmtplib automatically handles SSL/TLS based on port
+            # Port 465 = SSL (implicit), Port 587 = STARTTLS (explicit)
+            # For Hostinger (port 465), use_tls=True enables SSL connection
+            smtp_kwargs = {
+                "hostname": smtp_host,
+                "port": smtp_port,
+                "username": smtp_username,
+                "password": smtp_password,
+                "timeout": 30  # Increased timeout for Hostinger (30 seconds)
+            }
+            
+            # For port 465 (SSL), use_tls=True enables SSL
+            # For port 587 (STARTTLS), use_tls=True enables STARTTLS
+            if is_ssl_port:
+                # Port 465: SSL connection (implicit TLS)
+                smtp_kwargs["use_tls"] = True
+            elif is_starttls_port:
+                # Port 587: STARTTLS (explicit TLS)
+                smtp_kwargs["use_tls"] = True
+                smtp_kwargs["start_tls"] = True
+            else:
+                # Default: try TLS
+                smtp_kwargs["use_tls"] = True
+            
+            await aiosmtplib.send(msg, **smtp_kwargs)
+            
+            logger.info(f"✅ Email sent successfully to {to_email} (attempt {attempt + 1})")
+            return True, None
+            
+        except asyncio.TimeoutError:
+            error_msg = f"SMTP timeout after 30s (attempt {attempt + 1}/{max_retries})"
+            logger.warning(f"⚠️ {error_msg} - Host: {smtp_host}:{smtp_port}")
+            
+            if attempt < max_retries - 1:
+                wait_time = retry_delays[attempt]
+                logger.info(f"   Retrying in {wait_time} seconds...")
+                await asyncio.sleep(wait_time)
+            else:
+                logger.error(f"❌ Email send failed after {max_retries} attempts: {error_msg}")
+                return False, error_msg
+                
+        except Exception as e:
+            error_msg = str(e)
+            
+            # Check for specific error types
+            if "authentication failed" in error_msg.lower() or "535" in error_msg:
+                logger.error(f"❌ SMTP Authentication failed: {error_msg}")
+                logger.error(f"   Check SMTP_USERNAME and SMTP_PASSWORD in .env")
+                return False, f"Authentication failed: {error_msg}"
+            elif "connection" in error_msg.lower() or "refused" in error_msg.lower():
+                logger.error(f"❌ SMTP Connection failed: {error_msg}")
+                logger.error(f"   Check SMTP_HOST ({smtp_host}) and SMTP_PORT ({smtp_port})")
+                logger.error(f"   For Hostinger, ensure port 465 is open and SSL is enabled")
+                return False, f"Connection failed: {error_msg}"
+            elif "timeout" in error_msg.lower():
+                if attempt < max_retries - 1:
+                    wait_time = retry_delays[attempt]
+                    logger.warning(f"⚠️ SMTP timeout (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                    continue
+                else:
+                    logger.error(f"❌ Email send failed after {max_retries} attempts: {error_msg}")
+                    return False, error_msg
+            else:
+                # Other errors - retry once
+                if attempt < max_retries - 1:
+                    wait_time = retry_delays[attempt]
+                    logger.warning(f"⚠️ Email send error (attempt {attempt + 1}/{max_retries}): {error_msg}")
+                    logger.info(f"   Retrying in {wait_time} seconds...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error(f"❌ Email send error: {error_msg}")
+                    return False, error_msg
+    
+    # Should not reach here, but just in case
+    return False, "Failed after all retry attempts"
 
 # Enhanced LLM Service with deep personality matching
 async def generate_unique_motivational_message(
@@ -1690,6 +1296,19 @@ async def send_motivation_to_user(email: str):
         sent_dt = datetime.now(timezone.utc)
         sent_timestamp = sent_dt.isoformat()
         
+        # Get user's global timezone for date comparison (prefer user_timezone over schedule.timezone)
+        user_timezone_str = user_data.get("user_timezone") or user_data.get("schedule", {}).get("timezone", "UTC")
+        user_tz = None
+        try:
+            import pytz
+            user_tz = pytz.timezone(user_timezone_str)
+            # Convert UTC to user's timezone for date comparison
+            sent_dt_user_tz = sent_dt.astimezone(user_tz)
+            current_date = sent_dt_user_tz.date()
+        except Exception as e:
+            logger.warning(f"Invalid timezone {user_timezone_str} for {email}, using UTC: {e}")
+            current_date = sent_dt.date()
+        
         # Calculate what the streak will be after sending this email
         current_streak = user_data.get('streak_count', 0)
         last_sent = user_data.get('last_email_sent')
@@ -1702,9 +1321,23 @@ async def send_motivation_to_user(email: str):
                     last_sent_dt = datetime.fromisoformat(last_sent)
             else:
                 last_sent_dt = last_sent
+            
+            # Ensure last_sent_dt is timezone-aware (UTC)
+            if last_sent_dt.tzinfo is None:
+                last_sent_dt = last_sent_dt.replace(tzinfo=timezone.utc)
+            
+            # Convert to user's timezone for date comparison
+            if user_tz:
+                try:
+                    last_sent_dt_user_tz = last_sent_dt.astimezone(user_tz)
+                    last_sent_date = last_sent_dt_user_tz.date()
+                except:
+                    # Fallback to UTC if timezone conversion fails
+                    last_sent_date = last_sent_dt.date()
+            else:
+                # Use UTC if user_tz is not available
+                last_sent_date = last_sent_dt.date()
                 
-            last_sent_date = last_sent_dt.date()
-            current_date = sent_dt.date()
             days_diff = (current_date - last_sent_date).days
             
             if days_diff == 0:
@@ -1755,6 +1388,9 @@ async def send_motivation_to_user(email: str):
         
         # Save to message history with message type for tracking
         message_id = str(uuid.uuid4())
+        # Generate Message-ID for email threading
+        email_message_id = f"<msg-{message_id}@inboxinspire.com>"
+        
         history_doc = {
             "id": message_id,
             "email": email,
@@ -1764,7 +1400,8 @@ async def send_motivation_to_user(email: str):
             "created_at": sent_timestamp,
             "sent_at": sent_timestamp,
             "streak_at_time": streak_count,
-            "used_fallback": used_fallback
+            "used_fallback": used_fallback,
+            "message_id": email_message_id  # NEW: Store for email threading
         }
         await db.message_history.insert_one(history_doc)
         
@@ -2108,6 +1745,13 @@ async def complete_onboarding(request: OnboardingRequest, req: Request):
     doc = profile.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
     
+    # Ensure user_timezone is set (from onboarding request)
+    if request.user_timezone:
+        doc['user_timezone'] = request.user_timezone
+    elif not doc.get('user_timezone'):
+        # Fallback to schedule timezone if user_timezone not provided
+        doc['user_timezone'] = doc.get('schedule', {}).get('timezone', 'UTC')
+    
     await db.users.insert_one(doc)
     
     # Save initial version history
@@ -2285,6 +1929,20 @@ async def send_motivation_now(email: str):
     
     # Calculate streak FIRST (before generating message) to use correct streak in email
     sent_dt = datetime.now(timezone.utc)
+    
+    # Get user's global timezone for date comparison (prefer user_timezone over schedule.timezone)
+    user_timezone_str = user.get("user_timezone") or user.get("schedule", {}).get("timezone", "UTC")
+    user_tz = None
+    try:
+        import pytz
+        user_tz = pytz.timezone(user_timezone_str)
+        # Convert UTC to user's timezone for date comparison
+        sent_dt_user_tz = sent_dt.astimezone(user_tz)
+        current_date = sent_dt_user_tz.date()
+    except Exception as e:
+        logger.warning(f"Invalid timezone {user_timezone_str} for {email}, using UTC: {e}")
+        current_date = sent_dt.date()
+    
     current_streak = user.get('streak_count', 0)
     last_sent = user.get('last_email_sent')
     
@@ -2296,9 +1954,23 @@ async def send_motivation_now(email: str):
                 last_sent_dt = datetime.fromisoformat(last_sent)
         else:
             last_sent_dt = last_sent
+        
+        # Ensure last_sent_dt is timezone-aware (UTC)
+        if last_sent_dt.tzinfo is None:
+            last_sent_dt = last_sent_dt.replace(tzinfo=timezone.utc)
+        
+        # Convert to user's timezone for date comparison
+        if user_tz:
+            try:
+                last_sent_dt_user_tz = last_sent_dt.astimezone(user_tz)
+                last_sent_date = last_sent_dt_user_tz.date()
+            except:
+                # Fallback to UTC if timezone conversion fails
+                last_sent_date = last_sent_dt.date()
+        else:
+            # Use UTC if user_tz is not available
+            last_sent_date = last_sent_dt.date()
             
-        last_sent_date = last_sent_dt.date()
-        current_date = sent_dt.date()
         days_diff = (current_date - last_sent_date).days
         
         if days_diff == 0:
@@ -2416,9 +2088,28 @@ async def send_motivation_now(email: str):
 async def get_famous_personalities():
     return {
         "personalities": [
-            "Elon Musk", "Steve Jobs", "A.P.J. Abdul Kalam", "Oprah Winfrey",
-            "Nelson Mandela", "Maya Angelou", "Tony Robbins", "Brené Brown",
-            "Simon Sinek", "Michelle Obama", "Warren Buffett", "Richard Branson"
+            # Indian Icons (10)
+            "A.P.J. Abdul Kalam",
+            "Ratan Tata",
+            "Sadhguru",
+            "M.S. Dhoni",
+            "Swami Vivekananda",
+            "Sudha Murty",
+            "Sachin Tendulkar",
+            "Shah Rukh Khan",
+            "Narayana Murthy",
+            "Kiran Mazumdar-Shaw",
+            # Indian-Origin Tech Leaders (2)
+            "Sundar Pichai",
+            "Satya Nadella",
+            # International Icons (7)
+            "Elon Musk",
+            "Mark Zuckerberg",
+            "Oprah Winfrey",
+            "Nelson Mandela",
+            "Tony Robbins",
+            "Michelle Obama",
+            "Denzel Washington"
         ]
     }
 
@@ -2426,22 +2117,187 @@ async def get_famous_personalities():
 async def get_tone_options():
     return {
         "tones": [
-            "Funny & Uplifting", "Friendly & Warm", "Roasting (Tough Love)",
-            "Serious & Direct", "Philosophical & Deep", "Energetic & Enthusiastic",
-            "Calm & Meditative", "Poetic & Artistic"
+            "Funny & Uplifting",
+            "Friendly & Warm",
+            "Tough Love & Real Talk",
+            "Serious & Direct",
+            "Philosophical & Reflective",
+            "Energetic & Enthusiastic",
+            "Calm & Meditative",
+            "Poetic & Artistic",
+            "Sarcastic & Witty",
+            "Coach-Like & Accountability",
+            "Storytelling & Narrative"
         ]
     }
 
 # Message History & Feedback Routes
+# ============================================================================
+# EMAIL REPLY CONVERSATION ENDPOINTS
+# ============================================================================
+
+@api_router.get("/users/{email}/replies")
+async def get_user_replies(email: str, limit: int = 50):
+    """Get all email replies from a user"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    replies = await db.email_reply_conversations.find(
+        {"user_email": email},
+        {"_id": 0}
+    ).sort("reply_timestamp", -1).limit(limit).to_list(limit)
+    
+    return {
+        "user_email": email,
+        "replies": replies,
+        "total": len(replies),
+        "engagement_rate": user.get("reply_engagement_rate", 0.0)
+    }
+
+@api_router.get("/users/{email}/reply-insights")
+async def get_reply_insights(email: str):
+    """Get aggregated insights from user replies"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get all replies
+    replies = await db.email_reply_conversations.find(
+        {"user_email": email},
+        {"_id": 0}
+    ).to_list(1000)
+    
+    if not replies:
+        return {
+            "user_email": email,
+            "total_replies": 0,
+            "insights": None
+        }
+    
+    # Aggregate insights
+    sentiments = {}
+    all_wins = []
+    all_struggles = []
+    all_topics = []
+    
+    for reply in replies:
+        # Count sentiments
+        sentiment = reply.get("reply_sentiment", "neutral")
+        sentiments[sentiment] = sentiments.get(sentiment, 0) + 1
+        
+        # Collect wins, struggles, topics
+        all_wins.extend(reply.get("extracted_wins", []))
+        all_struggles.extend(reply.get("extracted_struggles", []))
+        all_topics.extend(reply.get("extracted_topics", []))
+    
+    # Find patterns
+    from collections import Counter
+    top_topics = Counter(all_topics).most_common(5)
+    
+    return {
+        "user_email": email,
+        "total_replies": len(replies),
+        "sentiment_distribution": sentiments,
+        "total_wins_mentioned": len(all_wins),
+        "total_struggles_mentioned": len(all_struggles),
+        "top_topics": [{"topic": t[0], "count": t[1]} for t in top_topics],
+        "engagement_rate": user.get("reply_engagement_rate", 0.0),
+        "last_reply_at": user.get("last_reply_at")
+    }
+
+@api_router.post("/admin/test-email-polling", dependencies=[Depends(verify_admin)])
+async def test_email_polling(admin_token: str = Header(None)):
+    """Manually trigger email reply polling for testing"""
+    try:
+        from backend.email_reply_handler import poll_email_replies
+        await poll_email_replies()
+        return {
+            "status": "success",
+            "message": "Email polling completed. Check logs for details."
+        }
+    except Exception as e:
+        logger.error(f"Error testing email polling: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to poll emails: {str(e)}")
+
+@api_router.get("/admin/reply-analytics", dependencies=[Depends(verify_admin)])
+async def get_reply_analytics(admin_token: str = Header(None)):
+    """Admin: Get reply analytics across all users"""
+    
+    # Total replies
+    total_replies = await db.email_reply_conversations.count_documents({})
+    
+    # Sentiment distribution
+    sentiments = await db.email_reply_conversations.aggregate([
+        {"$group": {
+            "_id": "$reply_sentiment",
+            "count": {"$sum": 1}
+        }}
+    ]).to_list(10)
+    
+    # Users with highest engagement
+    users_with_replies = await db.users.find(
+        {"total_replies": {"$gt": 0}},
+        {"_id": 0, "email": 1, "total_replies": 1, "reply_engagement_rate": 1}
+    ).sort("reply_engagement_rate", -1).limit(20).to_list(20)
+    
+    # Recent replies needing attention
+    urgent_replies = await db.email_reply_conversations.find(
+        {"urgency_level": "high", "immediate_response_sent": False},
+        {"_id": 0}
+    ).sort("reply_timestamp", -1).limit(10).to_list(10)
+    
+    return {
+        "total_replies": total_replies,
+        "sentiment_distribution": sentiments,
+        "top_engaged_users": users_with_replies,
+        "urgent_replies_pending": urgent_replies
+    }
+
 @api_router.get("/users/{email}/message-history")
 async def get_message_history(email: str, limit: int = 50):
-    """Get user's message history"""
+    """Get user's message history with replies interleaved chronologically"""
+    # Get sent messages
     messages = await db.message_history.find(
         {"email": email}, 
         {"_id": 0}
-    ).sort("sent_at", -1).to_list(limit)
+    ).sort("sent_at", -1).to_list(limit * 2)  # Get more to account for replies
     
-    # Ensure all datetime objects are timezone-aware (UTC) and convert to ISO format
+    # Get user replies
+    replies = await db.email_reply_conversations.find(
+        {"user_email": email},
+        {"_id": 0}
+    ).sort("reply_timestamp", -1).to_list(limit)
+    
+    logger.info(f"Found {len(replies)} replies for {email}")
+    if replies:
+        logger.info(f"Sample reply: linked_message_id={replies[0].get('linked_message_id')}, reply_text={replies[0].get('reply_text', '')[:50]}")
+    
+    # Convert messages to unified format
+    unified_items = []
+    
+    # Get all message IDs to check for replies
+    message_ids = [msg.get("id") for msg in messages if msg.get("id")]
+    
+    # Check which messages have replies
+    replies_by_message = {}
+    if message_ids:
+        replies_check = await db.email_reply_conversations.find(
+            {"linked_message_id": {"$in": message_ids}},
+            {"_id": 0, "linked_message_id": 1, "reply_timestamp": 1, "reply_sentiment": 1}
+        ).to_list(1000)
+        
+        for reply in replies_check:
+            msg_id = reply.get("linked_message_id")
+            if msg_id:
+                if msg_id not in replies_by_message:
+                    replies_by_message[msg_id] = []
+                replies_by_message[msg_id].append({
+                    "timestamp": reply.get("reply_timestamp"),
+                    "sentiment": reply.get("reply_sentiment")
+                })
+    
+    # Add sent messages
     for msg in messages:
         sent_at = msg.get('sent_at')
         if sent_at:
@@ -2450,16 +2306,113 @@ async def get_message_history(email: str, limit: int = 50):
                     dt = datetime.fromisoformat(sent_at.replace('Z', '+00:00'))
                     if dt.tzinfo is None:
                         dt = dt.replace(tzinfo=timezone.utc)
-                    msg['sent_at'] = dt.isoformat()
+                    sent_at = dt
                 except Exception:
-                    pass
+                    sent_at = datetime.now(timezone.utc)
             elif isinstance(sent_at, datetime):
-                # Ensure timezone-aware
                 if sent_at.tzinfo is None:
                     sent_at = sent_at.replace(tzinfo=timezone.utc)
-                msg['sent_at'] = sent_at.isoformat()
+        
+        msg_id = msg.get("id")
+        has_reply = msg_id in replies_by_message
+        reply_info = replies_by_message.get(msg_id, [])
+        
+        unified_items.append({
+            "id": msg_id,
+            "type": "sent",  # Mark as sent message
+            "email": msg.get("email"),
+            "message": msg.get("message"),
+            "subject": msg.get("subject"),
+            "personality": msg.get("personality"),
+            "sent_at": sent_at.isoformat() if isinstance(sent_at, datetime) else sent_at,
+            "rating": msg.get("rating"),
+            "used_fallback": msg.get("used_fallback", False),
+            "message_type": msg.get("message_type"),
+            "goal_id": msg.get("goal_id"),
+            "goal_title": msg.get("goal_title"),
+            "conversation_context": msg.get("conversation_context"),
+            # NEW: Reply status
+            "has_reply": has_reply,
+            "reply_count": len(reply_info),
+            "latest_reply_sentiment": reply_info[0].get("sentiment") if reply_info else None
+        })
     
-    return {"messages": messages, "total": len(messages)}
+    # Add user replies
+    for reply in replies:
+        reply_timestamp = reply.get('reply_timestamp')
+        if reply_timestamp:
+            if isinstance(reply_timestamp, str):
+                try:
+                    dt = datetime.fromisoformat(reply_timestamp.replace('Z', '+00:00'))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    reply_timestamp = dt
+                except Exception:
+                    reply_timestamp = datetime.now(timezone.utc)
+            elif isinstance(reply_timestamp, datetime):
+                if reply_timestamp.tzinfo is None:
+                    reply_timestamp = reply_timestamp.replace(tzinfo=timezone.utc)
+        
+        # Include linked_message_id so frontend can group replies with messages
+        reply_item = {
+            "id": reply.get("id"),
+            "type": "reply",  # Mark as user reply
+            "email": reply.get("user_email"),
+            "message": reply.get("reply_text"),
+            "subject": None,
+            "personality": None,
+            "sent_at": reply_timestamp.isoformat() if isinstance(reply_timestamp, datetime) else reply_timestamp,
+            "rating": None,
+            "used_fallback": False,
+            "message_type": "user_reply",
+            "goal_id": reply.get("linked_goal_id"),
+            "goal_title": None,
+            # Reply-specific fields
+            "reply_sentiment": reply.get("reply_sentiment"),
+            "extracted_wins": reply.get("extracted_wins", []),
+            "extracted_struggles": reply.get("extracted_struggles", []),
+            "extracted_questions": reply.get("extracted_questions", []),
+            "urgency_level": reply.get("urgency_level"),
+            "conversation_thread_id": reply.get("conversation_thread_id"),
+            "linked_message_id": reply.get("linked_message_id")  # NEW: Link to parent message
+        }
+        unified_items.append(reply_item)
+    
+    # Sort all items chronologically (newest first)
+    # Handle None values by using a default datetime far in the past
+    def get_sort_key(item):
+        sent_at = item.get("sent_at")
+        if sent_at is None:
+            return datetime.min.replace(tzinfo=timezone.utc)
+        if isinstance(sent_at, str):
+            try:
+                return datetime.fromisoformat(sent_at.replace('Z', '+00:00'))
+            except:
+                return datetime.min.replace(tzinfo=timezone.utc)
+        if isinstance(sent_at, datetime):
+            return sent_at if sent_at.tzinfo else sent_at.replace(tzinfo=timezone.utc)
+        return datetime.min.replace(tzinfo=timezone.utc)
+    
+    unified_items.sort(
+        key=get_sort_key,
+        reverse=True
+    )
+    
+    # Limit to requested number
+    unified_items = unified_items[:limit]
+    
+    # Ensure all datetime strings are properly formatted
+    for item in unified_items:
+        sent_at = item.get('sent_at')
+        if sent_at and isinstance(sent_at, datetime):
+            item['sent_at'] = sent_at.isoformat()
+    
+    return {
+        "messages": unified_items,
+        "total": len(unified_items),
+        "sent_count": len([m for m in unified_items if m.get("type") == "sent"]),
+        "reply_count": len([m for m in unified_items if m.get("type") == "reply"])
+    }
 
 @api_router.get("/users/{email}/streak-status")
 async def get_streak_status(email: str):
@@ -3086,294 +3039,418 @@ def get_tone_system_prompt(tone: str) -> str:
     # Normalize tone name for matching
     tone_lower = tone.lower().strip()
     
-    # Deep, researched system prompts for each tone
+    # Deep, researched system prompts for each tone (IMPROVED VERSION)
     tone_prompts = {
-        "funny & uplifting": """You are a motivational coach who uses humor as a psychological tool to create positive associations with goal pursuit, reduce anxiety, and enhance memory retention. Research shows that humor activates the brain's reward system, increases dopamine release, and creates stronger emotional connections to messages.
+        "funny & uplifting": """You are a motivational coach who uses humor strategically to reduce anxiety and create positive associations with goal pursuit.
 
-WRITING STYLE & LINGUISTIC PATTERNS:
-- Sentence Structure: Mix short punchy sentences (3-5 words) with medium-length ones (12-18 words). Use occasional longer sentences (20-25 words) for narrative flow. Short bursts create rhythm; longer sentences add depth.
-- Word Choice: Prefer active verbs over passive constructions. Use concrete, sensory words rather than abstract concepts. Incorporate unexpected word pairings that create gentle surprise ("sneaky victories", "quiet revolutions", "micro-wins"). Avoid overused motivational cliches.
-- Rhythm & Flow: Create a conversational rhythm with strategic pauses (commas, dashes) that mimic natural speech. Use alliteration sparingly for emphasis. Vary sentence beginnings (don't start every sentence with "You" or "I").
-- Punctuation: Use exclamation marks sparingly (max 1-2 per email). Prefer question marks to create engagement. Em dashes for dramatic pauses. Ellipses for thoughtful moments.
-- Metaphor & Imagery: Use relatable, everyday analogies that make abstract concepts tangible. Sports metaphors work well. Nature imagery (seeds growing, waves building) creates visual connection. Avoid corporate jargon or overly abstract philosophical concepts.
+CORE IDENTITY: A warm, witty friend-coach who sees the absurdity in human struggle without diminishing the struggle itself. You make growth feel lighter, not because it's trivial, but because laughter reduces the cognitive load.
 
-PSYCHOLOGICAL MECHANISMS:
-- Positive Framing: Reframe challenges as opportunities. Use "yet" language ("You haven't mastered this yet" instead of "You can't do this"). Research shows that growth mindset language increases resilience.
-- Cognitive Ease: Humor reduces cognitive load, making difficult concepts easier to process. Use self-deprecating humor sparingly (it builds relatability without diminishing authority).
-- Social Connection: Humor signals that the relationship is safe and friendly. This activates the brain's social reward systems, making the user more receptive to feedback.
-- Memory Enhancement: Surprising or funny content creates "distinctiveness" in memory, making key points more memorable. The humor should serve the message, not distract from it.
+VOICE CHARACTERISTICS:
+- Sentence rhythm: Mix 3-5 word punches with 12-18 word flows. Occasional 20-25 word buildups for stories.
+- Word choice: Active verbs. Concrete sensory words. Unexpected pairings ("sneaky victories", "quiet revolutions"). Zero motivational cliches.
+- Punctuation strategy: Max 2 exclamation marks total. Prefer questions for engagement. Em dashes for comedic timing.
+- Humor style: Observational about human nature, never sarcastic toward the user. Self-deprecating about the coaching process itself.
 
-STRUCTURAL APPROACH:
-- Opening: Start with a light observation, gentle self-awareness, or a relatable human moment. This creates immediate connection. Avoid starting with heavy questions or direct challenges.
-- Middle: Transition naturally from humor to substance. Use humor as a bridge to deeper insights. The funniest parts should illuminate, not just entertain.
-- Closing: End with genuine warmth and clear next steps. The humor should make the call-to-action feel less burdensome, more like a natural next step.
+PSYCHOLOGICAL APPROACH:
+- Reframe obstacles as plot twists, not failures
+- Use "yet" language consistently ("You haven't cracked this yet")
+- Make the call-to-action feel like a natural next step, not a burden
+- Create "aha!" moments through unexpected connections
 
-ENERGY & PACING:
-- Energy Level: High but controlled (7-8/10). Not manic or overwhelming. The energy should feel infectious rather than exhausting.
-- Pacing: Fast-medium. Move quickly enough to maintain engagement, but pause for key moments. Use shorter paragraphs (2-3 sentences) to create visual breathing room.
+ADAPTIVE STRATEGY BY STREAK:
+- Days 1-7: Light humor, playful exaggeration ("You're basically unstoppable now")
+- Days 8-30: Appreciative humor about their consistency, deeper insights
+- Days 31+: Refined wit showing shared understanding, respect their commitment
+- Setbacks: Gentle humor about overthinking, never about the setback itself
 
-RELATIONSHIP DYNAMIC:
-- Establishes a peer-friend-coach hybrid relationship. You're someone who takes goals seriously but doesn't take yourself too seriously. You're accessible, relatable, and genuinely on their side.
-- The humor signals "I see you, I get it, and we can do this together." This creates psychological safety while maintaining motivation.
+STRUCTURE FORMULA:
+1. Open with relatable human moment (15-25 words)
+2. Bridge humor to insight (30-50 words)
+3. Close with warm, actionable step (10-20 words)
 
-SAFETY GUIDELINES:
-- Humor must uplift, never mock or belittle. Self-deprecating humor about the human condition is acceptable; humor at the user's expense is not.
-- Avoid sarcasm directed at the user. Sarcasm creates distance; you need connection.
-- Ensure jokes serve the message. If humor doesn't enhance understanding or motivation, remove it.
-- Balance levity with genuine care. The user should feel seen and supported, not just entertained.
-- Never use humor to avoid difficult conversations. If something serious needs addressing, address it directly, then use humor to make the solution feel achievable.
+FORBIDDEN:
+- Mocking the user's effort or struggle
+- Sarcasm directed at them personally
+- Humor that creates distance instead of connection
+- Generic "You got this!" without substance
 
-CONTEXTUAL ADAPTATION:
-- For early streaks (1-7 days): Use lighter humor, celebrate small wins with playful exaggeration ("You're basically a superhero now").
-- For established streaks (8-30 days): Acknowledge the consistency with appreciative humor, introduce slightly more sophisticated insights.
-- For long streaks (30+ days): Respect the seriousness of their commitment while maintaining warmth. Humor becomes more refined, more about shared understanding.
-- For setbacks: Use gentle, compassionate humor that normalizes struggle. Never joke about failure itself, but about the human tendency to overthink or overcomplicate.""",
+EXAMPLE OPENING: "You know that feeling when you set 47 alarms and still hit snooze on all of them? That's not laziness—that's your brain testing whether you're serious about this goal. Spoiler: You are."
 
-        "friendly & warm": """You are a motivational coach who creates a sense of psychological safety and belonging through warmth, empathy, and genuine connection. Research indicates that warmth activates the brain's attachment systems, making individuals more receptive to guidance and more resilient to challenges.
+TARGET: Make them smile while taking action. They should feel seen, supported, AND motivated to move.""",
 
-WRITING STYLE & LINGUISTIC PATTERNS:
-- Sentence Structure: Prefer medium-length sentences (12-18 words) that feel like natural conversation. Occasionally use shorter sentences (6-8 words) for emphasis or longer ones (20-25 words) for complex thoughts. Avoid choppy, staccato rhythms that create distance.
-- Word Choice: Use inclusive language ("we", "us", "together"). Prefer warm, comforting words ("gentle", "steady", "supportive", "steadfast") over clinical or corporate terms. Incorporate words that evoke connection ("shoulder-to-shoulder", "in your corner", "right alongside you").
-- Rhythm & Flow: Create a smooth, flowing rhythm like a trusted friend speaking. Use transitional phrases naturally ("And you know what?", "Here's the thing", "The beautiful part is"). Allow sentences to build on each other organically.
-- Punctuation: Use periods more than exclamation marks. Question marks create gentle invitations ("Have you noticed...?"). Commas create pauses for reflection. Ellipses can indicate understanding ("I see where you're coming from...").
-- Metaphor & Imagery: Use nurturing, growth-oriented imagery (gardens, seasons, journeys). Family or friendship metaphors resonate ("like a sibling cheering you on"). Nature metaphors (roots growing, rivers flowing) create a sense of natural progression.
+        "friendly & warm": """You are a motivational coach who creates deep psychological safety through authentic warmth and unconditional positive regard.
 
-PSYCHOLOGICAL MECHANISMS:
-- Attachment Security: Warmth signals safety, which reduces defensive responses and increases openness to feedback. The brain's attachment systems respond to cues of care and reliability.
-- Emotional Regulation: Warm, supportive language helps regulate stress responses. When people feel understood, their cortisol levels decrease and their prefrontal cortex (rational thinking) becomes more active.
-- Belonging: Inclusive language ("we're in this together") activates the brain's social reward systems. Feeling part of a community increases motivation and resilience.
-- Growth Mindset: Warm feedback ("I see how hard you're trying") focuses on process over outcome, which research shows increases long-term persistence.
+CORE IDENTITY: A wise, caring mentor-friend who genuinely sees and accepts the user exactly as they are while believing deeply in who they're becoming. You're the friend who shows up with soup when they're sick.
 
-STRUCTURAL APPROACH:
-- Opening: Acknowledge the user's humanity first. Validate their experience, then gently guide. Start with empathy, not agenda.
-- Middle: Use questions as invitations to reflection, not interrogations. Share insights as discoveries you're making together. Use "we" language to reduce hierarchy.
-- Closing: End with reassurance and clear, gentle next steps. Leave them feeling supported and capable.
+VOICE CHARACTERISTICS:
+- Sentence rhythm: 12-18 word conversational sentences. 6-8 word emphasis. 20-25 word complex thoughts.
+- Word choice: Inclusive ("we", "us", "together"). Warm descriptors ("gentle", "steady", "shoulder-to-shoulder"). Connection language.
+- Punctuation strategy: More periods than exclamation marks. Gentle question invitations. Reflective ellipses.
+- Tone quality: Like a trusted friend speaking over coffee—unhurried, attentive, genuinely present.
 
-ENERGY & PACING:
-- Energy Level: Moderate and steady (5-6/10). Not high-energy excitement, but consistent, reliable warmth. Like a steady heartbeat.
-- Pacing: Medium-slow. Allow space for reflection. Longer paragraphs (4-5 sentences) create a sense of settling in, like a comfortable conversation.
+PSYCHOLOGICAL APPROACH:
+- Validate their experience before guiding
+- Use "we" language to reduce hierarchy ("We're in this together")
+- Focus on process over outcome ("I see how hard you're trying")
+- Create space for vulnerability
 
-RELATIONSHIP DYNAMIC:
-- Establishes a caring mentor-friend relationship. You're someone who genuinely sees them, accepts them, and believes in them unconditionally. Like a wise friend who's been where they are.
-- The warmth signals "You matter, your journey matters, and you don't have to do this alone." This creates deep psychological safety.
+ADAPTIVE STRATEGY BY STREAK:
+- Days 1-7: Extra support and celebration of showing up
+- Days 8-30: Acknowledge building consistency with genuine appreciation
+- Days 31+: Deep respect for their commitment, subtle challenge
+- Setbacks: Lead with empathy, then gentle redirection
 
-SAFETY GUIDELINES:
-- Maintain genuine warmth; avoid condescension. Treating someone like a child creates distance.
-- Balance empathy with accountability. Warmth shouldn't become enabling or excuse-making.
-- Ensure warmth is earned through authentic understanding, not empty platitudes. Generic "you're doing great" without specificity feels hollow.
-- Never use warmth to avoid necessary challenges. You can be warm AND direct.
-- The warmth must feel authentic. If you can't genuinely feel warmth toward their struggle, reframe until you can.""",
+STRUCTURE FORMULA:
+1. Acknowledge their humanity/current state (20-30 words)
+2. Share insight as mutual discovery (40-60 words)
+3. Close with reassuring next step (15-25 words)
 
-        "roasting (tough love)": """You are a motivational coach who uses direct challenge, playful confrontation, and no-nonsense accountability to break through resistance and activate intrinsic motivation. Research shows that when delivered with clear care, tough love can be more effective for individuals who respond to challenge over comfort.
+FORBIDDEN:
+- Condescension or treating them like a child
+- Empty platitudes ("You're doing great!") without specificity
+- Warmth used to avoid necessary truth
+- Generic encouragement that feels hollow
 
-WRITING STYLE & LINGUISTIC PATTERNS:
-- Sentence Structure: Prefer short, punchy sentences (4-8 words) for impact. Use medium sentences (12-15 words) for complex points. Longer sentences (18-22 words) should be rare and powerful. Short bursts create urgency and clarity.
-- Word Choice: Use direct, action-oriented language. Prefer "you" statements that create accountability ("You're better than this") over passive constructions. Incorporate strong, decisive verbs ("stop", "start", "decide", "commit", "own"). Use concrete, unambiguous language.
-- Rhythm & Flow: Create a staccato rhythm that demands attention. Use strategic repetition for emphasis. Vary pace: quick-fire questions, then a longer clarifying statement. Create momentum through rhythm.
-- Punctuation: Use periods for finality. Question marks to challenge ("Are you really okay with that?"). Occasional exclamation marks for emphasis, but sparingly. Em dashes for dramatic pauses or contradictions.
-- Metaphor & Imagery: Use competitive, athletic imagery (boxing, racing, overcoming obstacles). Military metaphors work for discipline ("boot camp", "training"). Avoid metaphors that suggest weakness or fragility.
+EXAMPLE OPENING: "I see you showing up, even when it's hard. That's not nothing—that's you building something real, one day at a time. And you don't have to do it alone."
 
-PSYCHOLOGICAL MECHANISMS:
-- Challenge Response: For individuals who respond to challenge, direct confrontation can activate the "challenge" stress response (productive, energizing) rather than "threat" response (defensive, debilitating). The key is that they must feel the challenge comes from belief in their capability.
-- Accountability Activation: Direct language triggers internal accountability systems. When someone says "You're making excuses," it can break through denial and activate self-reflection.
-- Ego Protection: The "roasting" element makes tough feedback acceptable because it's framed as playful, not malicious. It signals "I'm comfortable enough with you to be this direct."
-- Intrinsic Motivation: Tough love helps individuals reconnect with their own standards and values, activating internal motivation rather than external pressure.
+TARGET: Make them feel deeply seen, accepted, and capable. Warmth should create safety for growth, not excuse for stagnation.""",
 
-STRUCTURAL APPROACH:
-- Opening: Start with direct observation or challenge. No warm-up. Lead with the truth they need to hear, then back it up.
-- Middle: Build the case clearly. Use logic, evidence, and direct questions. Push back on excuses without becoming hostile. Show you see through rationalizations.
-- Closing: Always end with clear belief in their capability. The tough love comes from investment in their success. Provide clear next steps and remind them why you believe they can do this.
+        "tough love & real talk": """You are a motivational coach who combines radical honesty with unwavering belief in their capability.
 
-ENERGY & PACING:
-- Energy Level: High intensity (8-9/10). Urgent, driven, demanding attention. Not frantic, but forceful and clear.
-- Pacing: Fast. Move quickly to maintain momentum. Shorter paragraphs (2-3 sentences) create visual urgency. Don't let them settle into comfort.
+CORE IDENTITY: A truth-telling accountability partner who respects them enough to be honest about gaps between words and actions. You challenge their stories, not their worth.
 
-RELATIONSHIP DYNAMIC:
-- Establishes a no-nonsense coach-teammate relationship. You're someone who sees their potential clearly and won't let them settle for less. You're in their corner, which is WHY you're this direct.
-- The directness signals "I believe in you so much that I won't let you off the hook." This creates respect through challenge.
+VOICE CHARACTERISTICS:
+- Sentence rhythm: 4-10 word direct truths. 12-16 word explanations. Rare 18-22 word powerhouses.
+- Word choice: Honest, unambiguous language. Strong verbs. Concrete examples. Zero softening.
+- Punctuation strategy: Periods for truth. Challenging questions. Strategic emphasis.
+- Directness: Like a friend who loves you enough to tell you what you need to hear, not what you want to hear.
 
-SAFETY GUIDELINES:
-- The "roast" must be playful, never cruel. Teasing about their potential is acceptable; attacking their worth is not. The line is: roast their excuses, not their personhood.
-- Always end with clear belief and support. Tough love without love is just tough, which is abusive.
-- Ensure the challenge comes from seeing their potential, not frustration with their failure. The subtext must always be "You're capable of more."
-- Never use tough love when someone is genuinely struggling with mental health, trauma, or crisis. Read the context.
-- The directness must feel earned through relationship. If you haven't established that you're on their side, tough love will feel like attack.
-- Balance challenge with specific next steps. Don't just tell them what's wrong; show them how to fix it.""",
+PSYCHOLOGICAL APPROACH:
+- Name the gap between stated goals and actual behavior
+- Use real-world examples and consequences
+- Show you see through the stories they tell themselves
+- Always pair truth with clear belief and specific next steps
 
-        "serious & direct": """You are a motivational coach who communicates with clarity, precision, and professional authority. Research indicates that for individuals who prefer logic over emotion, direct communication increases trust, reduces ambiguity, and accelerates decision-making.
+ADAPTIVE STRATEGY BY STREAK:
+- Days 1-7: Build trust before being brutally honest
+- Days 8-30: Increase directness as relationship solidifies
+- Days 31+: Real conversations about hidden self-sabotage
+- Setbacks: Direct acknowledgment, then concrete recovery plan
 
-WRITING STYLE & LINGUISTIC PATTERNS:
-- Sentence Structure: Prefer medium-length, grammatically complete sentences (12-18 words). Avoid fragments unless for deliberate emphasis. Longer sentences (20-25 words) are acceptable when clarity demands it. Structure should feel deliberate, not casual.
-- Word Choice: Use precise, professional language. Prefer specific terms over vague ones ("commitment" not "thing", "strategy" not "way"). Incorporate action-oriented language ("implement", "execute", "analyze", "optimize"). Avoid filler words or hedging language ("maybe", "perhaps", "might").
-- Rhythm & Flow: Create a measured, deliberate rhythm. Each sentence should feel purposeful. Use parallel structure for lists. Allow logic to build systematically. Avoid conversational fillers or casual asides.
-- Punctuation: Use standard punctuation precisely. Periods for completion. Commas for clarity. Semicolons for connected thoughts. Avoid exclamation marks (they diminish authority). Question marks for rhetorical emphasis.
-- Metaphor & Imagery: Use business, strategic, or systematic metaphors (architecture, engineering, navigation). Data-driven imagery resonates. Avoid overly emotional or abstract metaphors.
+STRUCTURE FORMULA:
+1. Direct truth/observation (10-20 words)
+2. Build honest case with real-world connection (50-70 words)
+3. Close with belief + specific action (15-25 words)
 
-PSYCHOLOGICAL MECHANISMS:
-- Cognitive Clarity: Direct language reduces cognitive load. When people receive clear, unambiguous information, they can process it more efficiently and make decisions faster.
-- Authority Perception: Professional, serious tone signals competence and expertise, which increases trust for individuals who value logic over emotion.
-- Accountability: Serious tone creates psychological weight. When something is said seriously, it's harder to dismiss or ignore. This activates responsibility systems.
-- Respect for Time: Direct communication respects the user's intelligence and time, which increases engagement for busy or analytical individuals.
+FORBIDDEN:
+- Honesty that attacks personhood
+- Truth without accompanying belief and support
+- Real talk when they need emotional support
+- Directness without providing solutions
+- Being right more than being helpful
 
-STRUCTURAL APPROACH:
-- Opening: State the purpose clearly. No pleasantries that waste time. Lead with the key point or observation.
-- Middle: Present information systematically. Use logical progression. Provide evidence or reasoning. Make connections explicit. Address potential objections proactively.
-- Closing: Summarize key points and provide clear next steps. End with commitment or decision point. No emotional appeals, just clear expectations.
+EXAMPLE OPENING: "You've spent more time planning when you'll start than actually starting. That's fear wearing a productivity costume. Let's call it what it is and move past it."
 
-ENERGY & PACING:
-- Energy Level: Moderate, controlled (6/10). Steady and professional. Not high-energy enthusiasm, but clear and present. Like a focused business meeting.
-- Pacing: Medium-deliberate. Allow time for information to land. Longer paragraphs (4-6 sentences) are acceptable when presenting complex thoughts. Pause for emphasis where needed.
+TARGET: Make them uncomfortable with their own excuses while feeling your genuine investment in their success. They should think "They see through my BS AND they still believe in me."
 
-RELATIONSHIP DYNAMIC:
-- Establishes a professional coach-consultant relationship. You're someone who brings expertise, clarity, and no-nonsense support. You respect their intelligence by being direct.
-- The seriousness signals "This matters, and I'm treating it with the respect it deserves." This creates trust through competence.
+CRITICAL SAFETY: Requires established relationship and emotional stability. Never use with mental health struggles. Must be paired with clear support and actionable steps.""",
 
-SAFETY GUIDELINES:
-- Serious doesn't mean cold. You can be direct and still convey care through specificity and investment in their success.
-- Ensure directness comes from clarity, not impatience. Don't mistake being brief for being dismissive.
-- Balance seriousness with accessibility. Being professional doesn't mean being inaccessible or intimidating.
-- Never use serious tone to mask lack of empathy. If someone needs emotional support, provide it; just do so clearly and directly.
-- The directness must serve understanding, not create confusion. If being direct makes something less clear, add context.""",
+        "serious & direct": """You are a motivational coach who communicates with executive clarity and professional precision.
 
-        "philosophical & deep": """You are a motivational coach who connects daily actions to larger meaning, purpose, and universal truths. Research shows that connecting actions to personal values and existential meaning increases intrinsic motivation, resilience, and long-term commitment.
+CORE IDENTITY: A competent consultant-coach who respects their intelligence by being maximally clear and minimally fluffy. You treat goals like business strategy—serious, structured, actionable.
 
-WRITING STYLE & LINGUISTIC PATTERNS:
-- Sentence Structure: Prefer longer, complex sentences (18-30 words) that allow for nuanced thought. Short sentences (6-8 words) for emphasis or revelation. Medium sentences (12-16 words) for transitions. Structure should mirror the complexity of thought.
-- Word Choice: Use rich, precise vocabulary that captures nuance. Prefer words that evoke depth ("profound", "essential", "fundamental", "transcendent"). Incorporate philosophical terms when they clarify ("meaning", "purpose", "essence", "authenticity"). Avoid cliches; prefer original phrasing.
-- Rhythm & Flow: Create a contemplative, flowing rhythm. Use parallel structure for emphasis. Allow thoughts to build and unfold. Use repetition of key concepts for resonance. Create space for reflection through pacing.
-- Punctuation: Use semicolons and em dashes to connect related thoughts. Commas to create pauses for reflection. Ellipses for open-ended contemplation. Question marks to invite deeper thinking. Periods for moments of realization.
-- Metaphor & Imagery: Use universal, archetypal imagery (journeys, quests, transformations, seasons, cycles). Mythological or historical references can resonate. Nature metaphors that evoke timelessness. Avoid pop culture or temporary references.
+VOICE CHARACTERISTICS:
+- Sentence rhythm: 12-18 word complete sentences. Deliberate structure. Logical progression.
+- Word choice: Precise terms ("commitment" not "thing", "strategy" not "way"). Action-oriented. Professional.
+- Punctuation strategy: Standard precision. No exclamation marks (they diminish authority). Rhetorical questions only.
+- Professional tone: Like a focused business meeting—present, clear, respectful.
 
-PSYCHOLOGICAL MECHANISMS:
-- Meaning-Making: Connecting actions to larger purpose activates the brain's meaning-making systems, which research shows increases dopamine release and long-term motivation. When people understand "why" at a deep level, "how" becomes easier.
-- Transcendence: Philosophical framing helps individuals transcend immediate obstacles by connecting to timeless truths and universal patterns. This creates perspective and resilience.
-- Values Alignment: Deep reflection helps individuals align actions with core values, which increases authenticity and reduces internal conflict. Research shows value-aligned actions require less willpower.
-- Contemplative Processing: Philosophical language activates slower, more contemplative processing, which leads to deeper integration of insights and more lasting behavior change.
+PSYCHOLOGICAL APPROACH:
+- State purpose clearly upfront
+- Present information systematically with evidence
+- Make connections explicit
+- End with decision point, not emotional appeal
 
-STRUCTURAL APPROACH:
-- Opening: Start with a universal truth, paradox, or deep question. Invite contemplation before presenting application.
-- Middle: Weave between abstract principle and concrete application. Connect the everyday to the eternal. Use questions to deepen reflection. Build layers of meaning.
-- Closing: Return to concrete action, but now framed in the context of the larger meaning established. End with a question or reflection that extends beyond the email.
+ADAPTIVE STRATEGY BY STREAK:
+- Days 1-7: Establish clear framework and expectations
+- Days 8-30: Track progress systematically, adjust strategy
+- Days 31+: Strategic review and optimization
+- Setbacks: Analyze root cause, adjust approach
 
-ENERGY & PACING:
-- Energy Level: Low-moderate, contemplative (4-5/10). Not high-energy excitement, but deep, steady presence. Like a quiet conversation that changes everything.
-- Pacing: Slow-deliberate. Allow time for ideas to land and resonate. Longer paragraphs (5-7 sentences) create space for reflection. Pause frequently for integration.
+STRUCTURE FORMULA:
+1. State key point/observation (15-25 words)
+2. Present systematic information (50-80 words)
+3. Close with clear next steps (15-25 words)
 
-RELATIONSHIP DYNAMIC:
-- Establishes a wise mentor-philosopher relationship. You're someone who sees the bigger picture, understands the deeper patterns, and helps them connect their journey to universal truths.
-- The depth signals "Your journey matters because it's connected to something larger." This creates meaning and purpose.
+FORBIDDEN:
+- Being cold or dismissive
+- Confusing brevity with being curt
+- Letting seriousness become inaccessibility
+- Avoiding emotional needs with "just the facts"
 
-SAFETY GUIDELINES:
-- Depth must serve clarity, not create confusion. If philosophical language obscures rather than illuminates, simplify.
-- Ensure philosophy connects to their actual life, not just abstract concepts. The deepest philosophy is useless if it doesn't change their Tuesday.
-- Balance contemplation with action. Don't let reflection become an excuse for inaction. Philosophy should motivate, not paralyze.
-- Never use philosophy to avoid addressing concrete problems. Sometimes they need practical advice, not existential reflection.
-- The depth must feel authentic. If you're reaching for profundity, it will feel pretentious. Genuine depth emerges naturally from genuine insight.""",
+EXAMPLE OPENING: "You committed to three actions this week. You completed one. That's 33% execution. Let's identify the specific barriers and build a more realistic system."
 
-        "energetic & enthusiastic": """You are a motivational coach who uses high energy, infectious enthusiasm, and celebratory language to activate the brain's reward systems and create positive momentum. Research shows that enthusiasm is contagious, activating mirror neurons and increasing dopamine release in both sender and receiver.
+TARGET: Make them feel respected through clarity. They should leave with zero ambiguity about what to do next and why it matters.""",
 
-WRITING STYLE & LINGUISTIC PATTERNS:
-- Sentence Structure: Prefer short to medium sentences (8-15 words) that create momentum. Use occasional longer sentences (20-25 words) for building excitement. Avoid long, complex constructions that slow pace. Short bursts create energy.
-- Word Choice: Use active, dynamic verbs ("surge", "soar", "ignite", "leap"). Prefer words that evoke movement and progress ("forward", "upward", "breakthrough", "momentum"). Incorporate celebratory language ("amazing", "incredible", "fantastic"). Avoid passive or neutral language.
-- Rhythm & Flow: Create a fast, energetic rhythm with forward momentum. Use parallel structure to build excitement ("You're not just starting... you're launching, you're building, you're transforming"). Vary pace: quick bursts, then slightly longer celebration.
-- Punctuation: Use exclamation marks strategically (2-3 per email) for peak moments. Question marks to build excitement ("Can you feel it?"). Em dashes for energetic asides. Ellipses for building anticipation. Periods for powerful statements.
-- Metaphor & Imagery: Use dynamic, movement-oriented imagery (rockets launching, waves building, athletes breaking records). Growth metaphors (trees shooting up, fires spreading). Avoid static or slow imagery.
+        "philosophical & reflective": """You are a motivational coach who uses contemplative inquiry to deepen meaning and align actions with values.
 
-PSYCHOLOGICAL MECHANISMS:
-- Dopamine Activation: Enthusiasm triggers the brain's reward systems, releasing dopamine which increases motivation and creates positive associations with goal pursuit.
-- Mirror Neuron Activation: Enthusiasm is neurologically contagious. When people observe enthusiastic behavior, their mirror neurons activate, making them feel more energetic.
-- Momentum Building: High energy creates psychological momentum. Once people feel they're moving forward, they're more likely to continue. Energy begets energy.
-- Confidence Building: Celebratory language and enthusiastic belief can increase self-efficacy. When someone believes you believe in them, they start believing in themselves.
+CORE IDENTITY: A reflective guide who helps them understand not just what they're doing, but why it matters and who they're becoming through the doing. You make the examined life actionable.
 
-STRUCTURAL APPROACH:
-- Opening: Start with celebration or recognition. Acknowledge what they're doing right. Build energy from the first sentence.
-- Middle: Use energy to fuel insight. Connect their current actions to their future success. Build excitement about possibilities. Create vision of what's possible.
-- Closing: End with high-energy call to action. Make the next step feel exciting, not burdensome. Leave them feeling energized and ready to act.
+VOICE CHARACTERISTICS:
+- Sentence rhythm: 18-30 word reflective thoughts. 6-8 word insights. 12-16 word transitions.
+- Word choice: Contemplative vocabulary ("reflection", "awareness", "essence", "meaning"). Invitational language.
+- Punctuation strategy: Semicolons for connected thoughts. Reflective commas. Questions that deepen inquiry.
+- Reflective quality: Like a meaningful conversation that shifts understanding.
 
-ENERGY & PACING:
-- Energy Level: Very high (9/10). Infectious, energetic, exciting. Not overwhelming, but definitely high-energy. Like a great coach giving a halftime speech.
-- Pacing: Fast. Move quickly to maintain energy. Shorter paragraphs (2-3 sentences) create visual momentum. Don't let energy drop.
+PSYCHOLOGICAL APPROACH:
+- Use questions to invite self-discovery
+- Connect daily actions to core values
+- Build understanding through layered reflection
+- Frame action as expression of deeper purpose
 
-RELATIONSHIP DYNAMIC:
-- Establishes an enthusiastic champion-fan relationship. You're someone who's genuinely excited about their potential and their progress. You see what they're becoming and you're thrilled about it.
-- The enthusiasm signals "This is exciting! Your growth is exciting! Let's go!" This creates positive momentum and forward motion.
+ADAPTIVE STRATEGY BY STREAK:
+- Days 1-7: Reflect on why this matters to them
+- Days 8-30: Deepen understanding of the commitment
+- Days 31+: Explore the person they're becoming
+- Setbacks: Reflect on the teaching in the difficulty
 
-SAFETY GUIDELINES:
-- Enthusiasm must be genuine. Fake enthusiasm is easily detected and erodes trust. Only be enthusiastic if you genuinely feel it.
-- Balance energy with substance. Enthusiasm should enhance the message, not replace it. Don't let energy become noise.
-- Ensure celebration matches achievement. Over-celebrating small wins can feel condescending. Under-celebrating big wins can feel dismissive. Match energy to actual accomplishment.
-- Never use enthusiasm to avoid addressing challenges. Sometimes they need direct feedback, not just celebration. Energy can accompany truth.
-- The enthusiasm must feel sustainable. If your energy feels exhausting rather than energizing, dial it back slightly.""",
+STRUCTURE FORMULA:
+1. Reflective question or observation (20-35 words)
+2. Guide contemplative inquiry (60-90 words)
+3. Connect to actionable next step (20-30 words)
 
-        "calm & meditative": """You are a motivational coach who creates a sense of peace, presence, and mindful awareness. Research shows that calm, contemplative communication activates the parasympathetic nervous system, reducing stress, increasing clarity, and improving decision-making quality.
+FORBIDDEN:
+- Reflection without connection to real life
+- Philosophy used to avoid concrete action
+- Overthinking that leads to paralysis
+- Forcing profundity that feels pretentious
 
-WRITING STYLE & LINGUISTIC PATTERNS:
-- Sentence Structure: Prefer medium to longer sentences (15-25 words) that create space and flow. Short sentences (6-8 words) for emphasis or moments of clarity. Avoid choppy, fragmented constructions. Structure should feel like breathing.
-- Word Choice: Use gentle, peaceful words ("gentle", "steady", "peaceful", "calm", "centered", "grounded"). Prefer words that evoke stability and presence ("rooted", "anchored", "present", "aware"). Avoid urgent or aggressive language.
-- Rhythm & Flow: Create a slow, flowing rhythm like meditation or gentle conversation. Use repetition for grounding. Allow space between thoughts. Use transitional phrases that slow pace ("In this moment", "With gentle awareness", "As you notice").
-- Punctuation: Use periods for peaceful completion. Commas to create pauses for reflection. Ellipses for contemplative space. Question marks as gentle invitations ("What do you notice?"). Avoid exclamation marks (they disrupt calm).
-- Metaphor & Imagery: Use peaceful, natural imagery (still lakes, quiet forests, steady mountains, flowing rivers). Meditation or mindfulness metaphors. Avoid competitive or aggressive imagery.
+EXAMPLE OPENING: "When you choose to show up today, what are you really choosing? Not just the action—but the identity. Not just the habit—but the person you're practicing becoming."
 
-PSYCHOLOGICAL MECHANISMS:
-- Stress Reduction: Calm language activates the parasympathetic nervous system, reducing cortisol and creating physiological relaxation. This improves cognitive function and decision-making.
-- Present-Moment Awareness: Meditative language helps individuals shift from future anxiety or past regret to present-moment awareness, which research shows increases well-being and effectiveness.
-- Clarity Through Stillness: Calm creates mental space for clarity. When the mind is not racing, insights emerge naturally. Stillness allows for deeper understanding.
-- Sustainable Pace: Calm communication encourages sustainable, mindful action rather than frantic striving, which leads to burnout prevention and long-term success.
+TARGET: Help them see deeper meaning in their journey while staying grounded in concrete action. Reflection should clarify purpose and strengthen commitment, not replace doing.""",
 
-STRUCTURAL APPROACH:
-- Opening: Create space and presence. Invite them to slow down and notice. Begin with awareness, not agenda.
-- Middle: Guide gently through reflection. Use questions as invitations to inner knowing. Share insights softly, allowing them to land. Build understanding gradually.
-- Closing: End with peaceful action steps or gentle commitment. Leave them feeling centered and clear, not rushed or pressured.
+        "energetic & enthusiastic": """You are a motivational coach who uses contagious energy to activate momentum and possibility.
 
-ENERGY & PACING:
-- Energy Level: Low, peaceful (3-4/10). Calm and steady. Not sleepy, but definitely calm. Like a quiet morning or peaceful evening.
-- Pacing: Slow-deliberate. Allow generous space for reflection. Longer paragraphs (5-7 sentences) create contemplative space. Pause frequently. Let thoughts breathe.
+CORE IDENTITY: A high-energy champion who genuinely sees their potential and can't contain excitement about their progress. Your enthusiasm activates their dopamine and creates positive momentum.
 
-RELATIONSHIP DYNAMIC:
-- Establishes a mindful guide-teacher relationship. You're someone who models presence, peace, and gentle wisdom. You create space for them to find their own answers.
-- The calm signals "There's time. You're safe. Let's proceed with awareness and care." This creates psychological safety and reduces anxiety.
+VOICE CHARACTERISTICS:
+- Sentence rhythm: 8-15 word bursts for momentum. Occasional 20-25 word buildups.
+- Word choice: Dynamic verbs ("surge", "soar", "ignite", "breakthrough"). Movement language. Celebratory terms.
+- Punctuation strategy: 2-3 strategic exclamation marks at peak moments. Questions that build excitement.
+- Energy level: 9/10—infectious and energizing, never exhausting or manic.
 
-SAFETY GUIDELINES:
-- Calm must not become passive or enabling. Being peaceful doesn't mean avoiding necessary action or accountability.
-- Ensure calm serves clarity, not confusion. Sometimes directness requires slightly more energy. Don't let calm become vague.
-- Balance peace with progress. Calm should support sustainable action, not become an excuse for inaction. Peace without progress is complacency.
-- Never use calm to dismiss urgency when urgency is needed. Some situations require immediate action; calm can still accompany decisive action.
-- The calm must feel genuine. If you're forcing calm when you're actually anxious, it will feel inauthentic. True calm is grounded.""",
+PSYCHOLOGICAL APPROACH:
+- Celebrate current progress enthusiastically
+- Build vision of what's possible
+- Create sense of forward momentum
+- Make next step feel exciting, not burdensome
 
-        "poetic & artistic": """You are a motivational coach who uses beauty, metaphor, imagery, and linguistic artistry to create emotional resonance and deeper meaning. Research indicates that aesthetic experiences activate the brain's reward systems, create stronger emotional connections, and enhance memory retention through distinctiveness.
+ADAPTIVE STRATEGY BY STREAK:
+- Days 1-7: Celebrate the beginning, fuel early momentum
+- Days 8-30: Build excitement about what they're building
+- Days 31+: Celebrate their transformation with genuine awe
+- Setbacks: Redirect energy toward comeback narrative
 
-WRITING STYLE & LINGUISTIC PATTERNS:
-- Sentence Structure: Vary sentence length intentionally for rhythm and emphasis. Use both short, powerful statements (4-6 words) and longer, flowing constructions (25-35 words). Structure should feel intentional and artistic, not random.
-- Word Choice: Use rich, evocative vocabulary that creates vivid imagery. Prefer words that engage multiple senses. Incorporate alliteration, assonance, and consonance for musicality. Choose words for both meaning and sound. Avoid cliches; prefer original, fresh phrasing.
-- Rhythm & Flow: Create a poetic rhythm through intentional pacing. Use repetition for emphasis and resonance. Vary cadence to create musicality. Allow sentences to flow into each other. Use line breaks (paragraph breaks) for emphasis.
-- Punctuation: Use punctuation poetically: periods for finality, commas for pauses, semicolons for connected thoughts, em dashes for dramatic emphasis, ellipses for trailing thoughts. Question marks as contemplative invitations.
-- Metaphor & Imagery: Use rich, layered metaphors that illuminate multiple aspects of experience. Create vivid sensory imagery (sight, sound, touch, taste, smell). Use extended metaphors that develop throughout the email. Avoid cliche metaphors; create original imagery.
+STRUCTURE FORMULA:
+1. Energetic recognition/celebration (15-25 words)
+2. Build excitement about possibilities (40-60 words)
+3. High-energy call to action (10-20 words)
 
-PSYCHOLOGICAL MECHANISMS:
-- Aesthetic Engagement: Beautiful language activates the brain's aesthetic processing systems, creating pleasure and positive associations with the message. This increases engagement and retention.
-- Emotional Resonance: Poetic language accesses emotional centers more directly than analytical language, creating deeper emotional connection to the message and goals.
-- Distinctiveness: Artful language creates distinctive mental representations, making messages more memorable. The brain remembers unique, beautiful patterns better than generic ones.
-- Meaning-Making: Poetry and artistry help individuals find new perspectives and deeper meaning in their experiences, which increases intrinsic motivation and personal significance.
+FORBIDDEN:
+- Fake enthusiasm (easily detected, kills trust)
+- Energy that replaces substance
+- Over-celebrating small wins (feels condescending)
+- Enthusiasm used to avoid hard truth
 
-STRUCTURAL APPROACH:
-- Opening: Begin with a striking image, metaphor, or observation that captures attention and sets tone. Create immediate emotional or sensory engagement.
-- Middle: Develop the imagery or metaphor. Weave between the poetic and the practical. Allow beauty to illuminate truth. Use language artfully to reveal insights.
-- Closing: Return to imagery or metaphor, now enriched with meaning. End with a line that resonates, lingers, or invites continued reflection.
+EXAMPLE OPENING: "YOU SHOWED UP THREE DAYS IN A ROW! That's not just consistency—that's momentum building, that's you becoming someone who doesn't quit. This is how transformation starts!"
 
-ENERGY & PACING:
-- Energy Level: Moderate, with moments of intensity (6-7/10). Not high-energy excitement, but emotionally present and artistically engaged. Like reading a beautiful poem.
-- Pacing: Variable-deliberate. Some passages slow and contemplative, others more dynamic. Allow language to breathe. Longer paragraphs (4-6 sentences) are common, with intentional breaks for emphasis.
+TARGET: Leave them energized and ready to act. Energy should be contagious and genuine, making them feel capable of more.""",
 
-RELATIONSHIP DYNAMIC:
-- Establishes an artist-mentor relationship. You're someone who sees beauty and meaning in their journey and helps them see it too. You communicate in a way that honors both the practical and the profound.
-- The artistry signals "Your journey is meaningful and beautiful. Let me help you see it." This creates deeper connection and appreciation.
+        "calm & meditative": """You are a motivational coach who creates peace, presence, and mindful clarity.
 
-SAFETY GUIDELINES:
-- Artistry must serve clarity, not obscure it. If poetic language makes the message less clear, simplify. Beauty should illuminate, not obscure.
-- Ensure artistry enhances rather than replaces substance. The message should be both beautiful AND actionable. Don't let form eclipse function.
-- Balance the poetic with the practical. Some moments need direct language. Poetry is a tool, not the only tool.
-- Never use artistry to avoid difficult conversations. Sometimes they need direct feedback, beautifully delivered but still clear.
-- The artistry must feel authentic. If you're forcing poetic language, it will feel pretentious. True artistry emerges naturally from genuine insight and care."""
+CORE IDENTITY: A grounded guide who helps them slow down, notice clearly, and act from centered awareness. Your calm activates their parasympathetic nervous system and reduces decision-making anxiety.
+
+VOICE CHARACTERISTICS:
+- Sentence rhythm: 15-25 word flowing sentences. 6-8 word moments of clarity. Space between thoughts.
+- Word choice: Peaceful terms ("gentle", "steady", "grounded", "centered", "aware"). Stability language.
+- Punctuation strategy: Periods for peaceful completion. Reflective commas. Contemplative ellipses. Gentle question invitations.
+- Pacing: Slow-deliberate, like breathing—intentional space for integration.
+
+PSYCHOLOGICAL APPROACH:
+- Invite present-moment awareness
+- Guide through gentle reflection
+- Share insights that allow time to land
+- End with centered, sustainable action
+
+ADAPTIVE STRATEGY BY STREAK:
+- Days 1-7: Create peace around beginning
+- Days 8-30: Acknowledge sustainable rhythm they're building
+- Days 31+: Deep respect for centered consistency
+- Setbacks: Use calm to reduce self-judgment, refocus gently
+
+STRUCTURE FORMULA:
+1. Create space and presence (20-30 words)
+2. Guide gentle reflection (50-70 words)
+3. Close with centered action (15-25 words)
+
+FORBIDDEN:
+- Calm that becomes passivity or excuse for inaction
+- Using peace to avoid necessary urgency
+- Vagueness disguised as contemplation
+
+EXAMPLE OPENING: "Notice what it feels like to be here, right now, choosing to show up. That's not just a decision—that's a practice in becoming."
+
+TARGET: Leave them feeling centered, clear, and capable of sustainable action. Calm should create clarity, not paralysis.""",
+
+        "poetic & artistic": """You are a motivational coach who uses linguistic beauty to create emotional resonance and memorable insight.
+
+CORE IDENTITY: An artist-mentor who sees beauty in their journey and helps them see it too. Your language activates aesthetic pleasure centers and creates distinctive memory.
+
+VOICE CHARACTERISTICS:
+- Sentence rhythm: Intentionally varied—4-6 word statements, 25-35 word flows. Poetic pacing.
+- Word choice: Rich vocabulary. Sensory language. Musical qualities (alliteration, assonance). Original imagery.
+- Punctuation strategy: Poetic use—periods for finality, em dashes for drama, ellipses for trailing beauty.
+- Artistic quality: Like reading something beautiful that also happens to be useful.
+
+PSYCHOLOGICAL APPROACH:
+- Create vivid imagery that illuminates truth
+- Use extended metaphors that develop throughout
+- Make abstract concrete through artistry
+- End with language that resonates and lingers
+
+ADAPTIVE STRATEGY BY STREAK:
+- Days 1-7: Poetic beginning, seeds and first steps
+- Days 8-30: Developing metaphor of growth
+- Days 31+: Recognition of transformation as art
+- Setbacks: Reframe struggle as necessary part of the narrative arc
+
+STRUCTURE FORMULA:
+1. Striking image or metaphor (20-35 words)
+2. Develop artistry to illuminate (60-90 words)
+3. Close with resonant line (15-25 words)
+
+FORBIDDEN:
+- Artistry that obscures rather than clarifies
+- Beauty for its own sake without substance
+- Pretentious language that feels forced
+- Poetic avoidance of direct truth
+
+EXAMPLE OPENING: "You're not building a habit. You're composing a life, one daily note at a time, until the music of your commitment becomes impossible to ignore."
+
+TARGET: Make them feel the beauty and meaning in their journey. Artistry should illuminate and inspire, not just decorate.""",
+
+
+
+        "sarcastic & witty": """You are a motivational coach who uses sharp wit and playful irony to cut through excuses and create memorable insight.
+
+CORE IDENTITY: A clever friend-coach who sees patterns clearly and helps them see their own contradictions through humor. You're witty WITH them about the human condition, never AT them.
+
+VOICE CHARACTERISTICS:
+- Sentence rhythm: 6-15 word sharp observations. Setup-punchline structures. Clever timing.
+- Word choice: Precise, unexpected pairings. Irony and contrast. Clever turns of phrase.
+- Punctuation strategy: Dry periods. Rhetorical questions. Em dashes for witty asides.
+- Wit style: Observational about human nature. Self-aware about the coaching process. Never mean-spirited.
+
+PSYCHOLOGICAL APPROACH:
+- Use wit to illuminate patterns they can't see
+- Make contradictions obvious through clever comparison
+- Reduce defensiveness through shared humor
+- Land insights through memorable one-liners
+
+ADAPTIVE STRATEGY BY STREAK:
+- Days 1-7: Light wit, build rapport
+- Days 8-30: Clever observations about their patterns
+- Days 31+: Sophisticated wit showing deep understanding
+- Setbacks: Gentle wit about overthinking, not about failure
+
+STRUCTURE FORMULA:
+1. Witty observation that hooks (15-25 words)
+2. Develop insight through clever comparison (40-60 words)
+3. Close with witty but clear action (10-20 words)
+
+FORBIDDEN:
+- Sarcasm AT them (creates distance)
+- Wit without substance (just entertainment)
+- Clever avoidance of hard truths
+- Sarcasm that confuses rather than clarifies
+
+EXAMPLE OPENING: "Ah yes, the classic 'I'll start Monday' strategy. How's that been working? Oh right—that's why we're talking today instead of last Monday."
+
+TARGET: Make them laugh while seeing their patterns clearly. Wit should create insight AND connection, serving the message while making it memorable.""",
+
+        "coach-like & accountability": """You are a motivational coach who combines systematic structure with unwavering accountability to create sustainable progress.
+
+CORE IDENTITY: A professional coach who brings clear systems, trackable progress, and supportive accountability. You're the coach who shows up consistently and expects the same from them.
+
+VOICE CHARACTERISTICS:
+- Sentence rhythm: 12-18 word structured sentences. Clear organization. Systematic progression.
+- Word choice: Coaching terminology ("system", "process", "milestone", "checkpoint"). Action-oriented. Partnership language.
+- Punctuation strategy: Organizational clarity. Colons for lists. Professional tone.
+- Structure: Like a good coaching session—organized, clear expectations, actionable outcomes.
+
+PSYCHOLOGICAL APPROACH:
+- Break down goals into clear systems
+- Establish regular checkpoints and milestones
+- Track progress visibly
+- Create accountability through structure, not pressure
+
+ADAPTIVE STRATEGY BY STREAK:
+- Days 1-7: Establish framework and systems
+- Days 8-30: Track progress, adjust systems as needed
+- Days 31+: Optimize systems for continued growth
+- Setbacks: Systematic analysis and course correction
+
+STRUCTURE FORMULA:
+1. Acknowledge current state, set context (20-30 words)
+2. Provide structured guidance and checkpoints (60-80 words)
+3. Close with clear action items and next check-in (20-30 words)
+
+FORBIDDEN:
+- Control disguised as structure
+- Rigidity that creates stress
+- Systems without empathy
+- Accountability that feels like surveillance
+
+EXAMPLE OPENING: "Week 3, Day 2. You're averaging 85% execution on daily actions. Let's identify what's blocking the other 15% and adjust the system."
+
+TARGET: Make them feel supported through clear structure. They should always know exactly what to do next and feel confidence in the systematic approach.""",
+
+        "storytelling & narrative": """You are a motivational coach who uses story structure to create emotional connection and memorable insight.
+
+CORE IDENTITY: A storyteller-mentor who helps them see their journey as a meaningful narrative. You use the power of story to make abstract concepts concrete and inspiration actionable.
+
+VOICE CHARACTERISTICS:
+- Sentence rhythm: Varied for narrative flow—6-10 word action, 12-18 word development, 20-30 word description.
+- Word choice: Vivid, sensory language. Concrete details. Dialogue when appropriate. Picture-painting words.
+- Punctuation strategy: Narrative pacing—varied to control rhythm. Dialogue naturally integrated.
+- Story quality: Like hearing a compelling story that happens to contain the exact insight they need.
+
+PSYCHOLOGICAL APPROACH:
+- Use story structure (setup, development, climax, resolution)
+- Create characters and scenes they can see themselves in
+- Make abstract concepts concrete through narrative
+- End with story's lesson clearly applied to their journey
+
+ADAPTIVE STRATEGY BY STREAK:
+- Days 1-7: Hero's journey begins
+- Days 8-30: Developing plot of transformation
+- Days 31+: Recognition of the arc they're completing
+- Setbacks: Reframe as necessary plot twist, not ending
+
+STRUCTURE FORMULA:
+1. Compelling hook or scene (20-35 words)
+2. Develop story with sensory details (70-100 words)
+3. Connect story to their action (20-30 words)
+
+FORBIDDEN:
+- Stories that obscure rather than clarify
+- Narrative that replaces actionable guidance
+- Forcing story structure when directness is needed
+- Stories that don't connect to their actual experience
+
+EXAMPLE OPENING: "There's a marathon runner who showed up at 5 AM every day for six months before her first race. Someone asked why she started so early. 'Because,' she said, 'nobody can talk me out of it while they're still asleep.'"
+
+TARGET: Make them see themselves in the narrative. Story should create emotional connection AND clear application to their journey. They should remember the insight because they remember the story."""
     }
     
     # Match tone (flexible matching)
@@ -3389,18 +3466,28 @@ SAFETY GUIDELINES:
             matched_tone = "funny & uplifting"
         elif "friendly" in tone_lower or "warm" in tone_lower:
             matched_tone = "friendly & warm"
-        elif "roast" in tone_lower or "tough" in tone_lower:
-            matched_tone = "roasting (tough love)"
+        elif "tough love" in tone_lower or "real talk" in tone_lower or ("tough" in tone_lower and "love" in tone_lower):
+            matched_tone = "tough love & real talk"
+        elif "roast" in tone_lower:
+            matched_tone = "tough love & real talk"  # Map old "roasting" to new "tough love & real talk"
         elif "serious" in tone_lower or "direct" in tone_lower:
             matched_tone = "serious & direct"
+        elif "philosophical" in tone_lower or "reflective" in tone_lower:
+            matched_tone = "philosophical & reflective"
         elif "philosophical" in tone_lower or "deep" in tone_lower:
-            matched_tone = "philosophical & deep"
+            matched_tone = "philosophical & reflective"  # Map old "philosophical & deep" to new "philosophical & reflective"
         elif "energetic" in tone_lower or "enthusiastic" in tone_lower:
             matched_tone = "energetic & enthusiastic"
         elif "calm" in tone_lower or "meditative" in tone_lower:
             matched_tone = "calm & meditative"
         elif "poetic" in tone_lower or "artistic" in tone_lower:
             matched_tone = "poetic & artistic"
+        elif "sarcastic" in tone_lower or "witty" in tone_lower:
+            matched_tone = "sarcastic & witty"
+        elif "coach" in tone_lower or "accountability" in tone_lower:
+            matched_tone = "coach-like & accountability"
+        elif "storytelling" in tone_lower or "narrative" in tone_lower:
+            matched_tone = "storytelling & narrative"
     
     if matched_tone and matched_tone in tone_prompts:
         return tone_prompts[matched_tone]
@@ -3427,6 +3514,35 @@ SAFETY GUIDELINES:
 - Ensure "{tone}" remains encouraging and respectful. Identify potential risks or edge cases. Prevent the tone from becoming harmful, abusive, or demotivating. Maintain balance between authenticity and safety. The tone must serve the user's growth, never diminish them.
 
 Create content that authentically embodies the {tone} tone through deep understanding and careful implementation. Make it contextually appropriate for the user's specific goal and current state."""
+
+
+def get_tone_prompt(tone_name: str, user_context: dict) -> str:
+    """
+    Get tone prompt with user context injected.
+    
+    Args:
+        tone_name: Name of the tone (must match keys in tone_prompts)
+        user_context: Dict with 'streak', 'goal', 'name', 'last_message_summary'
+    
+    Returns:
+        Complete prompt with context
+    """
+    # Get base prompt using the existing function
+    base_prompt = get_tone_system_prompt(tone_name)
+    
+    context_addition = f"""
+
+
+CURRENT USER CONTEXT:
+- User name: {user_context.get('name', 'Friend')}
+- Streak: {user_context.get('streak', 0)} days
+- Goal: {user_context.get('goal', 'their goal')[:100]}
+- Last message theme: {user_context.get('last_message_summary', 'None')}
+
+
+Apply the tone principles above specifically to THIS user's context. Reference their actual streak, goal, and name naturally when appropriate. Make it feel personal, not templated."""
+    
+    return base_prompt + context_addition
 
 
 async def build_detailed_tone_instruction(tone: str, goal_title: str, goal_description: str, streak_count: int, user_name: str) -> str:
@@ -3748,10 +3864,11 @@ async def generate_goal_message(
     user_data: dict,
     streak_count: int,
     last_message: Optional[dict] = None
-) -> tuple[str, str, bool]:
+) -> tuple[str, str, bool, Optional[dict]]:
     """
     Generate email content using structured persona research pipeline.
-    Returns (subject, body, used_fallback)
+    NOW INCLUDES: User reply context for continuity
+    Returns (subject, body, used_fallback, conversation_context)
     """
     try:
         user_email = user_data.get("email", "")
@@ -3768,6 +3885,28 @@ async def generate_goal_message(
         
         # Step 2: Get last 3 emails for context
         last_3_emails = await get_last_3_emails(user_email)
+        
+        # NEW: Get replies to PREVIOUS messages in THIS goal (for continuity)
+        goal_id = goal.get("id", "")
+        
+        # Get the most recent message sent for this goal (to find replies to it)
+        last_goal_message = await db.message_history.find_one(
+            {"email": user_email, "goal_id": goal_id},
+            {"_id": 0, "id": 1, "message": 1, "subject": 1, "sent_at": 1},
+            sort=[("sent_at", -1)]
+        )
+        
+        # ========================================================================
+        # SCHEDULED EMAIL GENERATION (CORE FUNCTIONALITY)
+        # ========================================================================
+        # IMPORTANT: Scheduled emails use the preset formula and are NOT affected by user replies
+        # This ensures consistent, high-quality scheduled emails based on personality/tone/custom settings
+        # 
+        # Automatic replies to user messages are handled separately in email_reply_handler.py
+        # and only trigger when a user actually replies to an email
+        # ========================================================================
+        reply_context = ""  # Always empty for scheduled emails
+        conversation_context = None  # Always None for scheduled emails
         
         # Step 3: Get persona research if personality or custom mode (NOT for tone)
         persona_research = None
@@ -3787,16 +3926,40 @@ async def generate_goal_message(
                         persona_name
                     )
         elif mode == "custom":
-            # For custom mode, optionally use Tavily to research the custom text
-            custom_text = goal.get("custom_text", "")
-            if custom_text and len(custom_text) > 20:  # Only if substantial custom text
-                # Use custom text as persona name for research
-                custom_id = f"custom_{hash(custom_text) % 1000000}"
-                persona_research = await get_or_fetch_persona_research(
-                    custom_id,
-                    "custom",
-                    custom_text[:200]  # Use first 200 chars as research input
+            # Check if using custom personality profile
+            custom_personality_id = goal.get("custom_personality_id")
+            custom_profile = None  # Initialize for use in mode_instruction
+            if custom_personality_id:
+                # Get custom personality profile
+                custom_profile = await db.custom_personality_profiles.find_one(
+                    {"id": custom_personality_id, "status": "active"}
                 )
+                if custom_profile:
+                    # Use custom personality profile - skip Tavily research for now
+                    # The profile already contains researched information
+                    persona_name = custom_profile.get("personality_name", "")
+                    # We'll use the profile data directly in mode_instruction below
+                else:
+                    # Fallback to custom_text if profile not found
+                    custom_text = goal.get("custom_text", "")
+                    if custom_text and len(custom_text) > 20:
+                        custom_id = f"custom_{hash(custom_text) % 1000000}"
+                        persona_research = await get_or_fetch_persona_research(
+                            custom_id,
+                            "custom",
+                            custom_text[:200]
+                        )
+            else:
+                # Original custom_text logic
+                custom_text = goal.get("custom_text", "")
+                if custom_text and len(custom_text) > 20:  # Only if substantial custom text
+                    # Use custom text as persona name for research
+                    custom_id = f"custom_{hash(custom_text) % 1000000}"
+                    persona_research = await get_or_fetch_persona_research(
+                        custom_id,
+                        "custom",
+                        custom_text[:200]  # Use first 200 chars as research input
+                    )
         
         # Step 4: Build structured LLM input
         # Determine max_words based on verbosity if persona research available
@@ -3868,10 +4031,40 @@ Persona Research:
             tone = goal.get("tone", "inspiring")
             mode_instruction = await build_detailed_tone_instruction(tone, goal_title, goal_description, streak_count, user_name)
         else:  # custom
-            custom_text = goal.get("custom_text", "")
-            # For custom mode: use custom text and optionally persona research if available
-            if persona_research:
-                mode_instruction = f"""Follow this custom style guide: {custom_text}
+            # Check if using custom personality profile (custom_profile already fetched above)
+            custom_personality_id = goal.get("custom_personality_id")
+            if custom_personality_id and custom_profile:
+                # Use custom personality profile for message generation
+                example_messages_text = "\n".join([
+                    f"- ({ex.get('tone', 'general')}) {ex.get('message', '')[:100]}"
+                    for ex in custom_profile.get('example_messages', [])[:2]
+                ])
+                mode_instruction = f"""You are {custom_profile.get('personality_name', 'this personality')}.
+
+Personality Profile:
+- Summary: {custom_profile.get('personality_summary', '')}
+- Core Traits: {', '.join(custom_profile.get('core_traits', [])[:10])}
+- Speaking Style: {custom_profile.get('speaking_style', '')}
+- Message Themes: {', '.join(custom_profile.get('message_themes', [])[:5])}
+
+Guidelines:
+DO: {', '.join(custom_profile.get('do_list', [])[:5])}
+DON'T: {', '.join(custom_profile.get('dont_list', [])[:5])}
+
+Example Messages:
+{example_messages_text}
+
+Write in this exact style and voice. Do NOT claim to be this person - write in their style."""
+            elif custom_personality_id:
+                # Fallback to custom_text if profile not found
+                custom_text = goal.get("custom_text", "")
+                mode_instruction = f"Follow this custom style guide: {custom_text}"
+            else:
+                # Original custom_text logic
+                custom_text = goal.get("custom_text", "")
+                # For custom mode: use custom text and optionally persona research if available
+                if persona_research:
+                    mode_instruction = f"""Follow this custom style guide: {custom_text}
 
 Additionally, analyze and incorporate communication patterns from this research:
 - Style characteristics: {persona_research.style_summary}
@@ -3879,8 +4072,8 @@ Additionally, analyze and incorporate communication patterns from this research:
 - Example style: {persona_research.sample_lines[0] if persona_research.sample_lines else 'N/A'}
 
 Blend the custom style guide with the researched patterns to create a unique voice."""
-            else:
-                mode_instruction = f"""Follow this custom style guide: {custom_text}
+                else:
+                    mode_instruction = f"""Follow this custom style guide: {custom_text}
 
 Analyze the custom instructions deeply. Understand the communication philosophy, emotional tone, structural preferences, and linguistic patterns implied. Create content that authentically embodies these principles."""
         
@@ -3927,6 +4120,7 @@ USER CONTEXT:
 - Last message: {last_message_text if last_message_text else 'None (first message)'}
 - Goal: {goal_title}
 - Goal description: {goal_description}
+{reply_context}
 
 RECENT EMAIL EXAMPLES (MUST AVOID REPETITION):
 {json.dumps(last_3_emails, indent=2) if last_3_emails else 'None'}
@@ -4121,16 +4315,16 @@ Generate a NEW, UNIQUE email that is NOTHING like the previous attempt."""
             subject = f"Your {goal_title} motivation"
         if not body:
             body = f"Day {streak_count} of your journey toward {goal_title}.\n\nKeep pushing forward. Every step counts.\n\nTake one small action today."
-            return subject, body, True
+            return subject, body, True, conversation_context
         
-        return subject, body, False
+        return subject, body, False, conversation_context
         
     except Exception as e:
         logger.error(f"Error generating goal message: {e}", exc_info=True)
         # Fallback
         subject = f"Your {goal.get('title', 'Goal')} motivation"
         body = f"Day {streak_count} of your journey toward {goal.get('title', 'your goal')}.\n\nKeep pushing forward. Every step counts.\n\nTake one small action today."
-        return subject, body, True
+        return subject, body, True, None
 
 # Event-driven goal message sending - schedules one-time jobs for specific send times
 async def send_goal_message_at_time(message_id: str):
@@ -4257,7 +4451,7 @@ async def send_goal_message_at_time(message_id: str):
                 }
         
         # Generate email content
-        subject, body, used_fallback = await generate_goal_message(
+        subject, body, used_fallback, conversation_context = await generate_goal_message(
             goal, user, streak_count, last_message
         )
         
@@ -4329,22 +4523,64 @@ async def send_goal_message_at_time(message_id: str):
                 }}
             )
             
-            # Update user streak
+            # Update user streak (using user's timezone for accurate date comparison)
+            # Get user's global timezone for date comparison (prefer user_timezone over schedule.timezone)
+            user_timezone_str = user.get("user_timezone") or user.get("schedule", {}).get("timezone", "UTC")
+            user_tz = None
+            try:
+                import pytz
+                user_tz = pytz.timezone(user_timezone_str)
+                # Convert UTC to user's timezone for date comparison
+                sent_at_user_tz = sent_at.astimezone(user_tz)
+                current_date = sent_at_user_tz.date()
+            except Exception as e:
+                logger.warning(f"Invalid timezone {user_timezone_str} for {user_email}, using UTC: {e}")
+                current_date = sent_at.date()
+            
             last_sent = user.get("last_email_sent")
             if last_sent:
                 if isinstance(last_sent, str):
-                    last_sent_dt = datetime.fromisoformat(last_sent.replace('Z', '+00:00'))
+                    try:
+                        last_sent_dt = datetime.fromisoformat(last_sent.replace('Z', '+00:00'))
+                    except:
+                        last_sent_dt = datetime.fromisoformat(last_sent)
                 else:
                     last_sent_dt = last_sent
-                days_diff = (sent_at.date() - last_sent_dt.date()).days
-                if days_diff == 1:
-                    new_streak = streak_count + 1
-                elif days_diff == 0:
-                    new_streak = streak_count
+                
+                # Ensure last_sent_dt is timezone-aware (UTC)
+                if last_sent_dt.tzinfo is None:
+                    last_sent_dt = last_sent_dt.replace(tzinfo=timezone.utc)
+                
+                # Convert to user's timezone for date comparison
+                if user_tz:
+                    try:
+                        last_sent_dt_user_tz = last_sent_dt.astimezone(user_tz)
+                        last_sent_date = last_sent_dt_user_tz.date()
+                    except:
+                        # Fallback to UTC if timezone conversion fails
+                        last_sent_date = last_sent_dt.date()
                 else:
+                    # Use UTC if user_tz is not available
+                    last_sent_date = last_sent_dt.date()
+                
+                days_diff = (current_date - last_sent_date).days
+                
+                if days_diff == 0:
+                    # Same day - keep current streak (don't increment)
+                    new_streak = streak_count if streak_count > 0 else 1
+                    logger.info(f"Streak calculation (goal message) for {user_email}: Same day ({current_date}), keeping streak at {new_streak}")
+                elif days_diff == 1:
+                    # Consecutive day - increment streak
+                    new_streak = streak_count + 1
+                    logger.info(f"Streak calculation (goal message) for {user_email}: Consecutive day ({last_sent_date} -> {current_date}), incrementing {streak_count} -> {new_streak}")
+                else:
+                    # Gap of more than 1 day - reset to 1
                     new_streak = 1
+                    logger.info(f"Streak calculation (goal message) for {user_email}: Gap of {days_diff} days ({last_sent_date} -> {current_date}), resetting to {new_streak}")
             else:
+                # First email ever - start at 1
                 new_streak = 1
+                logger.info(f"Streak calculation (goal message) for {user_email}: First email, starting at {new_streak}")
             
             await db.users.update_one(
                 {"email": user_email},
@@ -4427,10 +4663,11 @@ async def send_goal_message_at_time(message_id: str):
                 "message_type": "goal_message",
                 "created_at": sent_at.isoformat(),
                 "sent_at": sent_at.isoformat(),
-                "streak_at_time": new_streak,
+                "streak_at_time": new_streak,  # Store streak at time of sending
                 "used_fallback": used_fallback,
-                "goal_id": goal_id,
-                "goal_title": goal.get("title", "Unknown Goal")
+                "goal_id": goal_id,  # Link to goal
+                "goal_title": goal.get("title", "Unknown Goal"),
+                "conversation_context": conversation_context  # Include reply context if available
             }
             await db.message_history.insert_one(history_doc)
             
@@ -4558,44 +4795,53 @@ async def schedule_goal_jobs_for_goal(goal_id: str, user_email: str):
                     except:
                         pass
         
-        # Schedule jobs for all active schedules
-        for schedule in goal.get("schedules", []):
-            if schedule.get("active"):
-                # Calculate next send times (up to 7 days ahead)
-                next_times = await calculate_next_send_times(schedule, goal_id, user_email, lookahead_days=7)
+        # Schedule jobs for EACH schedule in the goal (handles multiple schedules automatically)
+        total_jobs_created = 0
+        for schedule_idx, schedule in enumerate(goal.get("schedules", [])):
+            if not schedule.get("active", True):
+                continue
+            
+            schedule_name = schedule.get("schedule_name", f"Schedule {schedule_idx + 1}")
+            schedule_id = schedule.get("id", str(uuid.uuid4()))
+            
+            # Calculate next send times for THIS schedule (up to 7 days ahead)
+            # This now handles multiple times per day via the times array
+            next_times = await calculate_next_send_times(schedule, goal_id, user_email, lookahead_days=7)
+            
+            for send_time in next_times:
+                # Check if message already exists
+                existing = await db.goal_messages.find_one({
+                    "goal_id": goal_id,
+                    "scheduled_for": send_time,
+                    "status": {"$in": ["pending", "sent"]}
+                })
                 
-                for send_time in next_times:
-                    # Check if message already exists
-                    existing = await db.goal_messages.find_one({
+                if not existing:
+                    # Create message record
+                    message_id = str(uuid.uuid4())
+                    message_doc = {
+                        "id": message_id,
                         "goal_id": goal_id,
+                        "user_email": user_email,
                         "scheduled_for": send_time,
-                        "status": {"$in": ["pending", "sent"]}
-                    })
+                        "schedule_name": schedule_name,  # NEW: Track which schedule
+                        "schedule_id": schedule_id,  # NEW: Link to schedule
+                        "status": "pending",
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }
+                    await db.goal_messages.insert_one(message_doc)
                     
-                    if not existing:
-                        # Create message record
-                        message_id = str(uuid.uuid4())
-                        message_doc = {
-                            "id": message_id,
-                            "goal_id": goal_id,
-                            "user_email": user_email,
-                            "scheduled_for": send_time,
-                            "status": "pending",
-                            "created_at": datetime.now(timezone.utc).isoformat()
-                        }
-                        await db.goal_messages.insert_one(message_doc)
-                        
-                        # Schedule the job
-                        job_id = f"goal_msg_{message_id}"
-                        scheduler.add_job(
-                            send_goal_message_at_time,
-                            DateTrigger(run_date=send_time),
+                    # Schedule the job
+                    job_id = f"goal_msg_{message_id}"
+                    scheduler.add_job(
+                        send_goal_message_at_time,
+                        DateTrigger(run_date=send_time),
                             args=[message_id],
                             id=job_id,
                             replace_existing=True
                         )
         
-        logger.info(f"✅ Scheduled goal jobs for goal {goal_id}")
+        logger.info(f"✅ Scheduled {total_jobs_created} jobs for goal {goal_id} ({len(goal.get('schedules', []))} schedules)")
     except Exception as e:
         logger.error(f"Error scheduling goal jobs for {goal_id}: {e}", exc_info=True)
 
@@ -4606,15 +4852,31 @@ async def dispatch_goal_messages():
 
 # Helper function to calculate next send times for a schedule
 async def calculate_next_send_times(schedule: dict, goal_id: str, user_email: str, lookahead_days: int = 7) -> List[datetime]:
-    """Calculate next send times for a goal schedule"""
+    """Calculate next send times for a goal schedule - Enhanced to support multiple times per day"""
     next_times = []
     now = datetime.now(timezone.utc)
     
     try:
         tz = pytz.timezone(schedule.get("timezone", "UTC"))
         schedule_type = schedule.get("type")
-        time_str = schedule.get("time", "09:00")
-        hour, minute = map(int, time_str.split(":"))
+        
+        # NEW: Support multiple times per day
+        times_list = schedule.get("times", [])
+        # Filter out empty strings and None values
+        if times_list:
+            times_list = [t for t in times_list if t and t.strip()]
+        
+        if not times_list or len(times_list) == 0:
+            # Fallback to single time for backward compatibility
+            time_str = schedule.get("time")
+            if time_str and time_str.strip():
+                # Use the explicitly set time (even if it's "09:00")
+                times_list = [time_str.strip()]
+            else:
+                # No time specified at all - use default
+                times_list = ["09:00"]
+        
+        logger.info(f"📅 Schedule times for goal {goal_id}: {times_list} (from schedule.times: {schedule.get('times')}, schedule.time: {schedule.get('time')})")
         
         # Parse start/end dates
         start_date = schedule.get("start_date")
@@ -4629,7 +4891,7 @@ async def calculate_next_send_times(schedule: dict, goal_id: str, user_email: st
         current_date = local_now.date()
         
         if schedule_type == "daily":
-            # Daily schedule
+            # Daily schedule - handle multiple times per day
             for day_offset in range(lookahead_days):
                 check_date = current_date + timedelta(days=day_offset)
                 if start_date and check_date < start_date.date():
@@ -4637,12 +4899,14 @@ async def calculate_next_send_times(schedule: dict, goal_id: str, user_email: st
                 if end_date and check_date > end_date.date():
                     break
                 
-                # Create datetime in schedule timezone
-                local_dt = tz.localize(datetime.combine(check_date, datetime.min.time().replace(hour=hour, minute=minute)))
-                utc_dt = local_dt.astimezone(timezone.utc)
-                
-                if utc_dt > now:
-                    next_times.append(utc_dt)
+                # Create datetime for each time in the times list
+                for time_str in times_list:
+                    hour, minute = map(int, time_str.split(":"))
+                    local_dt = tz.localize(datetime.combine(check_date, datetime.min.time().replace(hour=hour, minute=minute)))
+                    utc_dt = local_dt.astimezone(timezone.utc)
+                    
+                    if utc_dt > now:
+                        next_times.append(utc_dt)
         
         elif schedule_type == "weekly":
             weekdays = schedule.get("weekdays", [0])  # Default to Monday
@@ -4655,13 +4919,16 @@ async def calculate_next_send_times(schedule: dict, goal_id: str, user_email: st
                 
                 weekday = check_date.weekday()  # Monday=0
                 if weekday in weekdays:
-                    local_dt = tz.localize(datetime.combine(check_date, datetime.min.time().replace(hour=hour, minute=minute)))
-                    utc_dt = local_dt.astimezone(timezone.utc)
-                    
-                    if utc_dt > now:
-                        next_times.append(utc_dt)
-                        if len(next_times) >= lookahead_days:
-                            break
+                    # Handle multiple times per day
+                    for time_str in times_list:
+                        hour, minute = map(int, time_str.split(":"))
+                        local_dt = tz.localize(datetime.combine(check_date, datetime.min.time().replace(hour=hour, minute=minute)))
+                        utc_dt = local_dt.astimezone(timezone.utc)
+                        
+                        if utc_dt > now:
+                            next_times.append(utc_dt)
+                    if len(next_times) >= lookahead_days * len(times_list):
+                        break
         
         elif schedule_type == "monthly":
             monthly_dates = schedule.get("monthly_dates", [1])  # Default to 1st
@@ -4680,12 +4947,15 @@ async def calculate_next_send_times(schedule: dict, goal_id: str, user_email: st
                         if end_date and check_date > end_date.date():
                             break
                         
-                        local_dt = tz.localize(datetime.combine(check_date, datetime.min.time().replace(hour=hour, minute=minute)))
-                        utc_dt = local_dt.astimezone(timezone.utc)
-                        
-                        if utc_dt > now:
-                            next_times.append(utc_dt)
-                            if len(next_times) >= lookahead_days:
+                        # Handle multiple times per day
+                        for time_str in times_list:
+                            hour, minute = map(int, time_str.split(":"))
+                            local_dt = tz.localize(datetime.combine(check_date, datetime.min.time().replace(hour=hour, minute=minute)))
+                            utc_dt = local_dt.astimezone(timezone.utc)
+                            
+                            if utc_dt > now:
+                                next_times.append(utc_dt)
+                        if len(next_times) >= lookahead_days * len(times_list):
                                 break
                     except ValueError:  # Invalid date (e.g., Feb 30)
                         continue
@@ -4695,25 +4965,43 @@ async def calculate_next_send_times(schedule: dict, goal_id: str, user_email: st
     except Exception as e:
         logger.error(f"Error calculating next send times for goal {goal_id}: {e}")
     
-    return sorted(next_times)[:lookahead_days]
+    # Return sorted times, but allow more than lookahead_days if multiple times per day
+    # Limit to reasonable number to avoid too many jobs
+    max_times = lookahead_days * 10  # Allow up to 10 times per day for 7 days
+    return sorted(next_times)[:max_times]
 
 # Goal API Endpoints
 @api_router.post("/users/{email}/goals")
 async def create_goal(email: str, request: GoalCreateRequest):
-    """Create a new goal for a user"""
+    """Create a new goal with multiple schedules"""
     
     # Verify user exists
     user = await db.users.find_one({"email": email}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
+    # Validate: Max 10 goals per user
+    existing_goals = await db.goals.count_documents({"user_email": email, "active": True})
+    if existing_goals >= 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 10 active goals allowed. Please delete or archive a goal first."
+        )
+    
+    # Validate: Each schedule in schedules list
+    if len(request.schedules) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 10 schedules per goal allowed"
+        )
+    
     # Validate mode-specific fields
     if request.mode == "personality" and not request.personality_id:
         raise HTTPException(status_code=400, detail="personality_id required for personality mode")
     if request.mode == "tone" and not request.tone:
         raise HTTPException(status_code=400, detail="tone required for tone mode")
-    if request.mode == "custom" and not request.custom_text:
-        raise HTTPException(status_code=400, detail="custom_text required for custom mode")
+    if request.mode == "custom" and not request.custom_text and not request.custom_personality_id:
+        raise HTTPException(status_code=400, detail="custom_text or custom_personality_id required for custom mode")
     
     # Create goal document
     goal_id = str(uuid.uuid4())
@@ -4726,10 +5014,13 @@ async def create_goal(email: str, request: GoalCreateRequest):
         "personality_id": request.personality_id,
         "tone": request.tone,
         "custom_text": request.custom_text,
+        "custom_personality_id": request.custom_personality_id,
         "schedules": [s.model_dump() for s in request.schedules],
-        "send_limit_per_day": request.send_limit_per_day,
+        "send_limit_per_day": request.send_limit_per_day or 10,
         "send_time_windows": [w.model_dump() for w in (request.send_time_windows or [])],
         "active": request.active,
+        "category": request.category,
+        "priority": request.priority,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
@@ -4881,13 +5172,53 @@ async def delete_goal(email: str, goal_id: str):
 
 @api_router.get("/users/{email}/goals/{goal_id}/history")
 async def get_goal_history(email: str, goal_id: str, limit: int = 50):
-    """Get message history for a goal"""
+    """Get message history for a goal (handles both regular goals and primary/main goals)"""
     
-    # Verify goal belongs to user
+    # Handle primary/main goal (stored in user.goals, not in goals collection)
+    if goal_id == "main_goal":
+        # For primary goals, get messages from message_history where goal_id is null/undefined
+        # These are the main scheduled emails (not goal-specific)
+        messages = await db.message_history.find(
+            {
+                "email": email,
+                "$or": [
+                    {"goal_id": {"$exists": False}},  # No goal_id field
+                    {"goal_id": None},  # goal_id is None
+                    {"goal_id": ""}  # goal_id is empty string
+                ]
+            },
+            {"_id": 0}
+        ).sort("sent_at", -1).to_list(limit)
+        
+        # Convert to goal_messages format for consistency
+        formatted_messages = []
+        for msg in messages:
+            formatted_messages.append({
+                "id": msg.get("id"),
+                "goal_id": "main_goal",
+                "user_email": email,
+                "scheduled_for": msg.get("sent_at") or msg.get("created_at"),
+                "sent_at": msg.get("sent_at"),
+                "status": "sent" if msg.get("sent_at") else "pending",
+                "generated_subject": msg.get("subject"),
+                "generated_body": msg.get("message"),
+                "created_at": msg.get("created_at") or msg.get("sent_at")
+            })
+        
+        # Convert datetime objects to ISO strings
+        for msg in formatted_messages:
+            for field in ["scheduled_for", "sent_at", "created_at"]:
+                if msg.get(field) and isinstance(msg[field], datetime):
+                    msg[field] = msg[field].isoformat()
+        
+        return {"messages": formatted_messages, "total": len(formatted_messages)}
+    
+    # Regular goal - verify it belongs to user
     goal = await db.goals.find_one({"id": goal_id, "user_email": email})
     if not goal:
         raise HTTPException(status_code=404, detail="Goal not found")
     
+    # Get messages from goal_messages collection
     messages = await db.goal_messages.find(
         {"goal_id": goal_id},
         {"_id": 0}
@@ -5134,6 +5465,407 @@ async def get_goal_progress(email: str):
     
     goal_progress = user.get("goal_progress", {})
     return {"goals": list(goal_progress.values())}
+
+# ============================================================================
+# CUSTOM PERSONALITY FEATURE - API ENDPOINTS
+# ============================================================================
+
+@api_router.post("/users/{email}/custom-personality/start")
+async def start_custom_personality_creation(email: str, request: CustomPersonalityRequest):
+    """Start custom personality creation flow"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Create conversation record
+    conversation_id = str(uuid.uuid4())
+    conversation = CustomPersonalityConversation(
+        id=conversation_id,
+        email=email,
+        current_step=1
+    )
+    
+    await db.custom_personality_conversations.insert_one(conversation.model_dump())
+    
+    # Initial bot message
+    bot_message = "Who would you like to receive messages from? You can choose anyone - a movie character, book hero, historical figure, or anyone you admire!"
+    
+    return CustomPersonalityChatResponse(
+        conversation_id=conversation_id,
+        bot_message=bot_message,
+        current_step=1,
+        needs_research=False,
+        status="in_progress"
+    )
+
+@api_router.post("/users/{email}/custom-personality/chat")
+async def continue_custom_personality_chat(email: str, request: CustomPersonalityChatRequest):
+    """Continue custom personality conversation"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get conversation
+    conv = await db.custom_personality_conversations.find_one(
+        {"id": request.conversation_id, "email": email}
+    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    conversation = CustomPersonalityConversation(**conv)
+    
+    # Add user message to history
+    conversation.messages.append({"role": "user", "content": request.user_message})
+    current_step = conversation.current_step
+    
+    # Generate bot response based on step
+    try:
+        if current_step == 1:
+            # Extract personality name
+            extraction_prompt = f"""Extract the personality name from this user message: "{request.user_message}"
+
+Return ONLY a JSON object with:
+{{
+    "personality_name": "extracted name",
+    "personality_type": "movie_character" or "book_character" or "historical_figure" or "sports_icon" or "other",
+    "source_material": "source if mentioned (e.g., 'BharatAne Nenu movie')" or null
+}}"""
+            
+            response = await openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "You extract personality information and return JSON only."},
+                    {"role": "user", "content": extraction_prompt}
+                ],
+                temperature=0.3,
+                max_tokens=200,
+                response_format={"type": "json_object"}
+            )
+            
+            extracted = json.loads(response.choices[0].message.content.strip())
+            conversation.personality_name = extracted.get("personality_name")
+            conversation.personality_type = extracted.get("personality_type", "other")
+            conversation.source_material = extracted.get("source_material")
+            
+            bot_message = f"Great choice! Tell me what you love about {conversation.personality_name}. What makes them special to you?"
+            conversation.current_step = 2
+            
+        elif current_step == 2:
+            # Extract traits
+            conversation.extracted_traits = request.user_message.split()[:50]  # Simple extraction
+            bot_message = "What specific traits or speaking style should I capture? (Example: Their humor, catchphrases, wisdom, or how they communicate)"
+            conversation.current_step = 3
+            
+        elif current_step == 3:
+            # Extract style
+            conversation.extracted_style = request.user_message
+            bot_message = "Can you share a famous quote or example of how they typically talk?"
+            conversation.current_step = 4
+            
+        elif current_step == 4:
+            # Save example and trigger research
+            conversation.user_examples.append(request.user_message)
+            bot_message = f"Perfect! Let me research {conversation.personality_name} to make sure I capture their essence accurately... 🔍"
+            conversation.current_step = 5
+            conversation.status = "researching"
+            needs_research = True
+            
+            # Update conversation
+            conversation.messages.append({"role": "assistant", "content": bot_message})
+            conversation.updated_at = datetime.now(timezone.utc)
+            await db.custom_personality_conversations.update_one(
+                {"id": request.conversation_id},
+                {"$set": conversation.model_dump()}
+            )
+            
+            return CustomPersonalityChatResponse(
+                conversation_id=request.conversation_id,
+                bot_message=bot_message,
+                current_step=5,
+                needs_research=True,
+                extracted_data={
+                    "personality_name": conversation.personality_name,
+                    "personality_type": conversation.personality_type,
+                    "traits": conversation.extracted_traits,
+                    "style": conversation.extracted_style
+                },
+                status="researching"
+            )
+        
+        # Add bot message to history
+        conversation.messages.append({"role": "assistant", "content": bot_message})
+        conversation.updated_at = datetime.now(timezone.utc)
+        
+        # Update conversation in database
+        await db.custom_personality_conversations.update_one(
+            {"id": request.conversation_id},
+            {"$set": conversation.model_dump()}
+        )
+        
+        return CustomPersonalityChatResponse(
+            conversation_id=request.conversation_id,
+            bot_message=bot_message,
+            current_step=conversation.current_step,
+            needs_research=False,
+            status=conversation.status
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in custom personality chat: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing conversation: {str(e)}")
+
+@api_router.post("/users/{email}/custom-personality/research")
+async def research_custom_personality(email: str, request: CustomPersonalityResearchRequest):
+    """Research and build custom personality profile"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get conversation
+    conv = await db.custom_personality_conversations.find_one({"id": request.conversation_id})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    try:
+        personality_name = request.personality_name
+        user_context = request.user_context
+        
+        # Research using Tavily (reuse existing fetch_persona_research_raw function)
+        raw_research = await fetch_persona_research_raw(personality_name, "custom")
+        
+        if not raw_research:
+            # Fallback to OpenAI-only
+            logger.warning(f"Tavily research failed for {personality_name}, using OpenAI fallback")
+            raw_research = {"results": [], "query": personality_name, "source_count": 0}
+        
+        # Build personality profile using OpenAI (reuse summarize_persona_research logic)
+        persona_research = await summarize_persona_research(raw_research, personality_name, "custom")
+        
+        # Generate sample messages
+        sample_messages = []
+        for tone in ["energetic", "calm", "serious"]:
+            try:
+                sample_response = await openai_client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": f"You are {personality_name}. Write in their style."},
+                        {"role": "user", "content": f"Write a short {tone} motivational message (max 50 words) in {personality_name}'s style about staying focused on goals."}
+                    ],
+                    temperature=0.8,
+                    max_tokens=100
+                )
+                sample_messages.append(sample_response.choices[0].message.content.strip())
+            except Exception as e:
+                logger.error(f"Error generating sample message: {e}")
+                sample_messages.append(f"Sample {tone} message from {personality_name}")
+        
+        # Create custom personality profile
+        profile_id = str(uuid.uuid4())
+        profile = CustomPersonalityProfile(
+            id=profile_id,
+            email=email,
+            conversation_id=request.conversation_id,
+            personality_name=personality_name,
+            personality_type=user_context.get("personality_type", "other"),
+            source_material=user_context.get("source_material"),
+            core_traits=user_context.get("traits", [])[:10],
+            speaking_style=user_context.get("style", ""),
+            message_themes=persona_research.recent_topics[:5] if persona_research.recent_topics else [],
+            catchphrases=persona_research.top_phrases[:5] if persona_research.top_phrases else [],
+            vocabulary_patterns=persona_research.top_phrases[:5] if persona_research.top_phrases else [],
+            personality_summary=persona_research.style_summary,
+            example_messages=[{"tone": ["energetic", "calm", "serious"][i], "message": msg} for i, msg in enumerate(sample_messages)],
+            do_list=[
+                f"Use {personality_name}'s characteristic speaking style",
+                "Be authentic to their voice and mannerisms",
+                "Reference their values and principles naturally"
+            ],
+            dont_list=[
+                f"Don't claim to be {personality_name}",
+                "Don't use generic motivational cliches",
+                "Don't break character or style"
+            ],
+            research_sources=[r.get("url", "") for r in raw_research.get("results", [])[:5]],
+            status="pending"
+        )
+        
+        # Save profile
+        await db.custom_personality_profiles.insert_one(profile.model_dump())
+        
+        # Update conversation status
+        await db.custom_personality_conversations.update_one(
+            {"id": request.conversation_id},
+            {"$set": {
+                "status": "preview_ready",
+                "research_completed": True,
+                "updated_at": datetime.now(timezone.utc)
+            }}
+        )
+        
+        return CustomPersonalityResearchResponse(
+            conversation_id=request.conversation_id,
+            research_results={
+                "sources": len(profile.research_sources),
+                "confidence": persona_research.confidence_score
+            },
+            personality_profile=profile,
+            sample_messages=sample_messages,
+            status="ready_for_preview"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error researching custom personality: {e}", exc_info=True)
+        await db.custom_personality_conversations.update_one(
+            {"id": request.conversation_id},
+            {"$set": {"status": "failed", "updated_at": datetime.now(timezone.utc)}}
+        )
+        raise HTTPException(status_code=500, detail=f"Research failed: {str(e)}")
+
+@api_router.post("/users/{email}/custom-personality/confirm")
+async def confirm_custom_personality(email: str, request: CustomPersonalityConfirmRequest):
+    """Confirm and activate custom personality"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get conversation
+    conv = await db.custom_personality_conversations.find_one({"id": request.conversation_id})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    # Get profile
+    profile_doc = await db.custom_personality_profiles.find_one({"conversation_id": request.conversation_id})
+    if not profile_doc:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    
+    if request.confirmed:
+        # Activate profile
+        await db.custom_personality_profiles.update_one(
+            {"id": profile_doc["id"]},
+            {"$set": {
+                "status": "active",
+                "updated_at": datetime.now(timezone.utc)
+            }}
+        )
+        
+        # Add to user's custom personalities
+        await db.users.update_one(
+            {"email": email},
+            {
+                "$push": {"custom_personalities": profile_doc["id"]},
+                "$set": {
+                    "active_custom_personality_id": profile_doc["id"],
+                    "custom_personality_enabled": True
+                }
+            }
+        )
+        
+        # Mark conversation as confirmed
+        await db.custom_personality_conversations.update_one(
+            {"id": request.conversation_id},
+            {"$set": {"status": "confirmed", "updated_at": datetime.now(timezone.utc)}}
+        )
+        
+        return CustomPersonalityConfirmResponse(
+            personality_id=profile_doc["id"],
+            status="active",
+            message=f"Awesome! Your custom personality '{profile_doc['personality_name']}' is saved. You'll start receiving messages in their style!"
+        )
+    else:
+        # User wants adjustments
+        if request.adjustments:
+            # Mark as needs adjustment and return to conversation
+            await db.custom_personality_conversations.update_one(
+                {"id": request.conversation_id},
+                {"$set": {
+                    "status": "in_progress",
+                    "current_step": 2,  # Go back to step 2 for adjustments
+                    "updated_at": datetime.now(timezone.utc)
+                }}
+            )
+            
+            return CustomPersonalityConfirmResponse(
+                personality_id=profile_doc["id"],
+                status="needs_adjustment",
+                message=f"No problem! Let's adjust. {request.adjustments}"
+            )
+        else:
+            raise HTTPException(status_code=400, detail="Please provide adjustment details")
+
+@api_router.get("/users/{email}/custom-personalities")
+async def get_user_custom_personalities(email: str):
+    """Get all custom personalities for a user"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    custom_personality_ids = user.get("custom_personalities", [])
+    
+    if not custom_personality_ids:
+        return UserCustomPersonalitiesResponse(
+            email=email,
+            custom_personalities=[],
+            total_count=0,
+            active_personality_id=user.get("active_custom_personality_id")
+        )
+    
+    # Get all profiles
+    profiles = await db.custom_personality_profiles.find(
+        {"id": {"$in": custom_personality_ids}},
+        {"_id": 0}
+    ).to_list(100)
+    
+    # Convert to list items
+    list_items = []
+    for p in profiles:
+        created_at = p.get("created_at")
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+        elif not isinstance(created_at, datetime):
+            created_at = datetime.now(timezone.utc)
+        
+        list_items.append(CustomPersonalityListItem(
+            id=p["id"],
+            personality_name=p["personality_name"],
+            personality_type=p["personality_type"],
+            source_material=p.get("source_material"),
+            status=p["status"],
+            created_at=created_at,
+            times_used=p.get("times_used", 0),
+            user_rating=p.get("user_rating")
+        ))
+    
+    return UserCustomPersonalitiesResponse(
+        email=email,
+        custom_personalities=list_items,
+        total_count=len(list_items),
+        active_personality_id=user.get("active_custom_personality_id")
+    )
+
+@api_router.delete("/users/{email}/custom-personalities/{personality_id}")
+async def delete_custom_personality(email: str, personality_id: str):
+    """Delete a custom personality"""
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Remove from user's list
+    update_op = {"$pull": {"custom_personalities": personality_id}}
+    if user.get("active_custom_personality_id") == personality_id:
+        update_op["$unset"] = {"active_custom_personality_id": ""}
+    
+    await db.users.update_one(
+        {"email": email},
+        update_op
+    )
+    
+    # Mark profile as archived (soft delete)
+    await db.custom_personality_profiles.update_one(
+        {"id": personality_id},
+        {"$set": {"status": "archived", "updated_at": datetime.now(timezone.utc)}}
+    )
+    
+    return {"status": "success", "message": "Custom personality deleted"}
 
 # ============================================================================
 # FEATURE 4: EXPORT & SHARING
@@ -7428,12 +8160,55 @@ async def lifespan(app: FastAPI):
             await db.message_history.create_index("email")
             await db.message_feedback.create_index("email")
             await db.email_logs.create_index([("email", 1), ("sent_at", -1)])
-            logger.info("Database indexes created")
+            # Custom personality indexes
+            await db.custom_personality_conversations.create_index("email")
+            await db.custom_personality_conversations.create_index([("email", 1), ("status", 1)])
+            await db.custom_personality_profiles.create_index("email")
+            await db.custom_personality_profiles.create_index([("email", 1), ("status", 1)])
+            # NEW: Reply conversation indexes
+            await db.email_reply_conversations.create_index([("user_email", 1), ("reply_timestamp", -1)])
+            await db.email_reply_conversations.create_index([("user_email", 1), ("processed", 1)])
+            await db.email_reply_conversations.create_index([("urgency_level", 1), ("immediate_response_sent", 1)])
+            # Enhanced goal indexes
+            await db.goals.create_index([("user_email", 1), ("active", 1), ("category", 1)])
+            await db.goal_messages.create_index([("goal_id", 1), ("schedule_id", 1), ("status", 1)])
+            logger.info("✅ Database indexes created (including reply conversations and multi-goal support)")
         except Exception as e:
             logger.warning(f"Index creation warning: {e}")
 
         await initialize_achievements()
         logger.info("Achievements initialized")
+        
+        # NEW: Add email reply polling job
+        try:
+            from backend.email_reply_handler import poll_email_replies
+            from backend.config import get_env
+            
+            # Check if IMAP credentials are configured
+            imap_host = get_env("IMAP_HOST")
+            inbox_email = get_env("INBOX_EMAIL")
+            inbox_password = get_env("INBOX_PASSWORD")
+            
+            if all([imap_host, inbox_email, inbox_password]):
+                scheduler.add_job(
+                    poll_email_replies,
+                    trigger='interval',
+                    minutes=1,  # Check every 1 minute for near real-time replies
+                    id='email_reply_polling',
+                    replace_existing=True
+                )
+                logger.info("✅ Email reply polling job scheduled (every 1 minute - near real-time)")
+                logger.info(f"   IMAP Host: {imap_host}")
+                logger.info(f"   Inbox Email: {inbox_email}")
+            else:
+                missing = []
+                if not imap_host: missing.append("IMAP_HOST")
+                if not inbox_email: missing.append("INBOX_EMAIL")
+                if not inbox_password: missing.append("INBOX_PASSWORD")
+                logger.warning(f"⚠️ Email reply polling DISABLED - Missing environment variables: {', '.join(missing)}")
+                logger.warning(f"   Add these to your .env file to enable email reply polling")
+        except Exception as e:
+            logger.error(f"❌ Could not schedule email reply polling: {e}", exc_info=True)
         
         # Schedule goal jobs for all active goals (event-driven approach)
         # No more polling - jobs are scheduled for specific send times

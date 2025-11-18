@@ -8,3 +8,6 @@ apscheduler
 aiosmtplib
 openai
 pytz
+imap-tools
+beautifulsoup4
+httpx

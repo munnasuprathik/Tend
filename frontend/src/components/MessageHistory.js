@@ -4,7 +4,7 @@ import axios from "axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Star, MessageSquare, Loader2, User, Clock, Search, X, Heart, Download } from "lucide-react";
+import { Star, MessageSquare, Loader2, User, Clock, Search, X, Heart, Download, Reply, CheckCircle2 } from "lucide-react";
 import { exportMessageHistory } from "@/utils/exportData";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,6 +27,7 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [filterRating, setFilterRating] = useState(null);
   const [favoriteMessages, setFavoriteMessages] = useState([]);
+  const [stats, setStats] = useState({ sent_count: 0, reply_count: 0 });
 
   const fetchMessages = useCallback(async () => {
     try {
@@ -34,10 +35,12 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
       const response = await retryWithBackoff(async () => {
         return await axios.get(`${API}/users/${email}/message-history`);
       });
-      const sorted = [...response.data.messages].sort(
-        (a, b) => new Date(b.sent_at) - new Date(a.sent_at),
-      );
-      setMessages(sorted);
+      // Messages are already sorted chronologically by backend (includes replies)
+      setMessages(response.data.messages || []);
+      setStats({
+        sent_count: response.data.sent_count || 0,
+        reply_count: response.data.reply_count || 0
+      });
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to load messages");
     } finally {
@@ -94,19 +97,78 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
     }
   };
 
+  // Group messages with their replies
+  const groupedMessages = useMemo(() => {
+    const sentMessages = messages.filter(m => m.type === "sent");
+    const replyMessages = messages.filter(m => m.type === "reply");
+    
+    console.log(`[MessageHistory] Grouping: ${sentMessages.length} sent messages, ${replyMessages.length} replies`);
+    
+    // Create a map of message_id -> replies using linked_message_id
+    const repliesMap = new Map();
+    replyMessages.forEach(reply => {
+      const linkedMessageId = reply.linked_message_id;
+      if (linkedMessageId) {
+        if (!repliesMap.has(linkedMessageId)) {
+          repliesMap.set(linkedMessageId, []);
+        }
+        repliesMap.get(linkedMessageId).push(reply);
+        console.log(`[MessageHistory] Linked reply to message ${linkedMessageId}`);
+      } else {
+        // Fallback: Find the most recent sent message before this reply
+        const replyTime = new Date(reply.sent_at);
+        const matchingMessage = sentMessages
+          .filter(m => {
+            const msgTime = new Date(m.sent_at);
+            return msgTime < replyTime;
+          })
+          .sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at))[0];
+        
+        if (matchingMessage) {
+          if (!repliesMap.has(matchingMessage.id)) {
+            repliesMap.set(matchingMessage.id, []);
+          }
+          repliesMap.get(matchingMessage.id).push(reply);
+          console.log(`[MessageHistory] Fallback: Linked reply to message ${matchingMessage.id} (no linked_message_id)`);
+        } else {
+          console.warn(`[MessageHistory] Could not find matching message for reply at ${reply.sent_at}`);
+        }
+      }
+    });
+    
+    // Sort replies by timestamp (newest first)
+    repliesMap.forEach((replies, msgId) => {
+      replies.sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at));
+    });
+    
+    // Group sent messages with their replies
+    const grouped = sentMessages.map(msg => ({
+      ...msg,
+      replies: (repliesMap.get(msg.id) || []).sort((a, b) => new Date(a.sent_at) - new Date(b.sent_at)) // Oldest first for display
+    })).sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at));
+    
+    const totalReplies = grouped.reduce((sum, msg) => sum + (msg.replies?.length || 0), 0);
+    console.log(`[MessageHistory] Grouped result: ${grouped.length} messages, ${totalReplies} total replies attached`);
+    
+    return grouped;
+  }, [messages]);
+
   // Filter and search messages - MUST be called before any early returns
   const filteredMessages = useMemo(() => {
-    return messages.filter((message) => {
+    return groupedMessages.filter((group) => {
+      const message = group;
       const matchesSearch = !debouncedSearchQuery || 
         message.message?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
         message.personality?.value?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-        message.subject?.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
+        message.subject?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+        (message.replies?.some(r => r.message?.toLowerCase().includes(debouncedSearchQuery.toLowerCase())));
       
+      // For replies, skip rating filter (replies don't have ratings)
       const matchesRating = filterRating === null || message.rating === filterRating;
       
       return matchesSearch && matchesRating;
     });
-  }, [messages, debouncedSearchQuery, filterRating]);
+  }, [groupedMessages, debouncedSearchQuery, filterRating]);
 
   const submitFeedback = async () => {
     if (rating === 0) {
@@ -172,7 +234,10 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
         <div>
           <h3 className="text-lg font-semibold">Your Message History</h3>
           <p className="text-xs text-muted-foreground mt-1">
-            {filteredMessages.length} of {messages.length} {messages.length === 1 ? 'message' : 'messages'}
+            {filteredMessages.length} of {messages.length} {messages.length === 1 ? 'item' : 'items'}
+            {stats.reply_count > 0 && (
+              <span className="ml-2">({stats.reply_count} {stats.reply_count === 1 ? 'reply' : 'replies'})</span>
+            )}
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -224,73 +289,89 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
           </CardContent>
         </Card>
       ) : (
-        filteredMessages.map((message) => (
-        <Card key={message.id} data-testid="message-history-item" className="hover:shadow-md transition-shadow">
-          <CardHeader className="p-4 sm:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-2 min-w-0">
-                  <User className="h-4 w-4 text-[#6B4EFF] flex-shrink-0" />
-                  <CardTitle className="text-base sm:text-lg truncate min-w-0">From {message.personality?.value || "Unknown"}</CardTitle>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Clock className="h-3 w-3" />
-                  <span>{formatDateTimeForTimezone(message.sent_at, timezone)}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => toggleFavorite(message.id)}
-                  className="h-8 w-8 p-0"
-                >
-                  <Heart
-                    className={`h-4 w-4 ${
-                      favoriteMessages.includes(message.id)
-                        ? "fill-red-500 text-red-500"
-                        : "text-gray-400"
-                    }`}
-                  />
-                </Button>
-                {message.used_fallback && (
-                  <span className="text-xs font-medium px-2 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
-                    Backup
-                  </span>
-                )}
-                {message.rating && (
-                  <div className="flex items-center gap-1">
-                    {[...Array(message.rating)].map((_, i) => (
-                      <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                    ))}
+        filteredMessages.map((message) => {
+          const hasReplies = message.replies && message.replies.length > 0;
+          
+          return (
+          <div key={message.id} className="space-y-3">
+            {/* Original Message */}
+            <Card 
+              data-testid="message-history-item" 
+              className={`hover:shadow-md transition-shadow ${hasReplies ? 'border-green-300 border-2' : ''}`}
+            >
+              <CardHeader className="p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-2 min-w-0">
+                      <User className="h-4 w-4 text-[#6B4EFF] flex-shrink-0" />
+                      <CardTitle className="text-base sm:text-lg truncate min-w-0">From {message.personality?.value || "Unknown"}</CardTitle>
+                      {hasReplies && (
+                        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 border border-green-300">
+                          <CheckCircle2 className="h-3 w-3 text-green-600" />
+                          <span className="text-xs font-semibold text-green-700">
+                            {message.replies.length === 1 ? 'Replied' : `${message.replies.length} replies`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      <span>{formatDateTimeForTimezone(message.sent_at, timezone)}</span>
+                    </div>
                   </div>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 sm:p-6 space-y-4">
-            <div className="bg-slate-50 rounded-lg p-3 sm:p-4 border-l-2 border-[#6B4EFF]">
-              <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap text-gray-700">
-                {message.message}
-              </p>
-            </div>
-            <Dialog open={selectedMessage?.id === message.id} onOpenChange={(open) => !open && setSelectedMessage(null)}>
-              <DialogTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => {
-                    setSelectedMessage(message);
-                    setRating(message.rating || 0);
-                    setFeedbackText("");
-                  }}
-                  data-testid="rate-message-btn"
-                  className="w-full sm:w-auto min-h-[44px]"
-                >
-                  <Star className="h-4 w-4 mr-2" />
-                  {message.rating ? 'Update Rating' : 'Rate This Message'}
-                </Button>
-              </DialogTrigger>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => toggleFavorite(message.id)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <Heart
+                        className={`h-4 w-4 ${
+                          favoriteMessages.includes(message.id)
+                            ? "fill-red-500 text-red-500"
+                            : "text-gray-400"
+                        }`}
+                      />
+                    </Button>
+                    {message.used_fallback && (
+                      <span className="text-xs font-medium px-2 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+                        Backup
+                      </span>
+                    )}
+                    {message.rating && (
+                      <div className="flex items-center gap-1">
+                        {[...Array(message.rating)].map((_, i) => (
+                          <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 sm:p-6 space-y-4">
+                <div className="rounded-lg p-3 sm:p-4 border-l-2 bg-slate-50 border-[#6B4EFF]">
+                  <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap text-gray-700">
+                    {message.message}
+                  </p>
+                </div>
+                <Dialog open={selectedMessage?.id === message.id} onOpenChange={(open) => !open && setSelectedMessage(null)}>
+                  <DialogTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => {
+                        setSelectedMessage(message);
+                        setRating(message.rating || 0);
+                        setFeedbackText("");
+                      }}
+                      data-testid="rate-message-btn"
+                      className="w-full sm:w-auto min-h-[44px]"
+                    >
+                      <Star className="h-4 w-4 mr-2" />
+                      {message.rating ? 'Update Rating' : 'Rate This Message'}
+                    </Button>
+                  </DialogTrigger>
               <DialogContent className="w-[95vw] sm:w-full p-4 sm:p-6">
                 <DialogHeader>
                   <DialogTitle className="text-lg sm:text-xl">Rate This Message</DialogTitle>
@@ -345,9 +426,78 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
                 </div>
               </DialogContent>
             </Dialog>
-          </CardContent>
-        </Card>
-      )))}
+            </CardContent>
+          </Card>
+          
+          {/* Show Replies Below Original Message */}
+          {hasReplies && (
+            <div className="ml-4 sm:ml-8 space-y-2 border-l-2 border-blue-300 pl-4">
+              {message.replies.map((reply) => (
+                <Card 
+                  key={reply.id}
+                  className="bg-blue-50/50 border-blue-200 hover:shadow-md transition-shadow"
+                >
+                  <CardHeader className="p-3 sm:p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Reply className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                      <CardTitle className="text-sm sm:text-base text-blue-700">Your Reply</CardTitle>
+                      {reply.reply_sentiment && (
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          reply.reply_sentiment === 'positive' ? 'bg-green-100 text-green-700' :
+                          reply.reply_sentiment === 'struggling' ? 'bg-red-100 text-red-700' :
+                          reply.reply_sentiment === 'excited' ? 'bg-yellow-100 text-yellow-700' :
+                          reply.reply_sentiment === 'confused' ? 'bg-orange-100 text-orange-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {reply.reply_sentiment}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      <span>{formatDateTimeForTimezone(reply.sent_at, timezone)}</span>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-3 sm:p-4 space-y-3">
+                    <div className="rounded-lg p-3 border-l-2 bg-blue-50 border-blue-400">
+                      <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap text-blue-900">
+                        {reply.message}
+                      </p>
+                    </div>
+                    {(reply.extracted_wins?.length > 0 || reply.extracted_struggles?.length > 0) && (
+                      <div className="bg-white rounded-lg p-2 border border-blue-200">
+                        <p className="text-xs font-semibold text-blue-700 mb-2">Insights:</p>
+                        {reply.extracted_wins?.length > 0 && (
+                          <div className="mb-2">
+                            <p className="text-xs font-medium text-green-700 mb-1">Wins:</p>
+                            <ul className="text-xs text-gray-600 list-disc list-inside">
+                              {reply.extracted_wins.map((win, idx) => (
+                                <li key={idx}>{win}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {reply.extracted_struggles?.length > 0 && (
+                          <div>
+                            <p className="text-xs font-medium text-red-700 mb-1">Struggles:</p>
+                            <ul className="text-xs text-gray-600 list-disc list-inside">
+                              {reply.extracted_struggles.map((struggle, idx) => (
+                                <li key={idx}>{struggle}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+          </div>
+          );
+        })
+      )}
     </div>
   );
 });
