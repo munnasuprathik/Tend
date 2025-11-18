@@ -11,3 +11,4 @@ pytz
 imap-tools
 beautifulsoup4
 httpx
+slowapi

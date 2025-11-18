@@ -95,7 +95,7 @@ function AuthScreen() {
           </div>
           <div>
             <CardTitle className="text-3xl font-bold">
-              {isSignUp ? "Join InboxInspire" : "InboxInspire"}
+              {isSignUp ? "Join Tend" : "Tend"}
             </CardTitle>
             <CardDescription>
               {isSignUp
@@ -290,7 +290,7 @@ function OnboardingScreen({ email, onComplete }) {
         user_timezone: formData.user_timezone || formData.timezone || "UTC"  // NEW: Send global timezone
       });
 
-      toast.success("🎉 Welcome to InboxInspire!", {
+      toast.success("🎉 Welcome to Tend!", {
         description: "You're all set! Get ready for daily motivation!",
         duration: 4000,
       });
@@ -1865,6 +1865,14 @@ function AdminDashboard() {
   const [filterActive, setFilterActive] = useState("all"); // all, active, inactive
   const [logFilterStatus, setLogFilterStatus] = useState("all"); // all, success, failed
   const [logFilterEmail, setLogFilterEmail] = useState("");
+  const [unifiedLogs, setUnifiedLogs] = useState([]);
+  const [unifiedLogsLoading, setUnifiedLogsLoading] = useState(false);
+  const [unifiedLogsPage, setUnifiedLogsPage] = useState(1);
+  const [unifiedLogsTotal, setUnifiedLogsTotal] = useState(0);
+  const [unifiedLogsType, setUnifiedLogsType] = useState("all"); // all, activity, system, api
+  const [unifiedLogsSearch, setUnifiedLogsSearch] = useState("");
+  const [unifiedLogsStartDate, setUnifiedLogsStartDate] = useState("");
+  const [unifiedLogsEndDate, setUnifiedLogsEndDate] = useState("");
   const [achievements, setAchievements] = useState([]);
   const [achievementsLoading, setAchievementsLoading] = useState(false);
   const [editingAchievement, setEditingAchievement] = useState(null);
@@ -2372,6 +2380,54 @@ function AdminDashboard() {
     }
   };
 
+  const fetchUnifiedLogs = async (page = 1, reset = false) => {
+    try {
+      setUnifiedLogsLoading(true);
+      const headers = { Authorization: `Bearer ${sessionStorage.getItem('adminToken')}` };
+      
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: "100",
+        log_type: unifiedLogsType,
+      });
+      
+      if (unifiedLogsSearch) {
+        params.append("search", unifiedLogsSearch);
+      }
+      if (unifiedLogsStartDate) {
+        params.append("start_date", unifiedLogsStartDate);
+      }
+      if (unifiedLogsEndDate) {
+        params.append("end_date", unifiedLogsEndDate);
+      }
+      if (logFilterEmail) {
+        params.append("user_email", logFilterEmail);
+      }
+      
+      const response = await axios.get(`${API}/admin/logs/unified?${params.toString()}`, { headers });
+      
+      if (reset) {
+        setUnifiedLogs(response.data.logs);
+      } else {
+        setUnifiedLogs([...unifiedLogs, ...response.data.logs]);
+      }
+      
+      setUnifiedLogsTotal(response.data.total);
+      setUnifiedLogsPage(response.data.page);
+    } catch (error) {
+      console.error("Failed to fetch unified logs:", error);
+      toast.error("Failed to load logs");
+    } finally {
+      setUnifiedLogsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (authenticated) {
+      fetchUnifiedLogs(1, true);
+    }
+  }, [authenticated, unifiedLogsType, unifiedLogsSearch, unifiedLogsStartDate, unifiedLogsEndDate, logFilterEmail]);
+
   if (!authenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 to-slate-800">
@@ -2408,7 +2464,7 @@ function AdminDashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
           <div>
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold">Admin Dashboard</h1>
-            <p className="text-muted-foreground text-sm sm:text-base">Monitor InboxInspire</p>
+            <p className="text-muted-foreground text-sm sm:text-base">Monitor Tend</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <Button variant="outline" onClick={handleRefresh} disabled={loading} className="w-full sm:w-auto">
@@ -2867,67 +2923,249 @@ function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="logs">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Email Logs</CardTitle>
-                  <Button variant="outline" size="sm" onClick={() => handleExportData('logs')}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Export
-                  </Button>
-                </div>
-                <div className="flex gap-2 mt-4">
-                  <Input
-                    placeholder="Filter by email..."
-                    value={logFilterEmail}
-                    onChange={(e) => setLogFilterEmail(e.target.value)}
-                    className="max-w-xs"
-                  />
-                  <select
-                    value={logFilterStatus}
-                    onChange={(e) => setLogFilterStatus(e.target.value)}
-                    className="px-3 py-2 border rounded-md"
-                  >
-                    <option value="all">All Status</option>
-                    <option value="success">Success</option>
-                    <option value="failed">Failed</option>
-                  </select>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {filteredLogs.map((log) => {
-                    const timestamp = log.local_sent_at || log.sent_at;
-                    return (
-                      <div key={log.id} className="flex items-center justify-between p-3 border rounded-lg text-sm">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{log.email}</p>
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                              log.status === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                            }`}>
-                              {log.status}
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">{log.subject}</p>
-                          {log.error_message && (
-                            <p className="text-xs text-red-600 mt-1">Error: {log.error_message}</p>
-                          )}
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          {formatDateTimeForTimezone(timestamp, ADMIN_TIMEZONE, {
-                            includeZone: true,
-                          })}
-                        </span>
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                      <CardTitle className="text-lg sm:text-xl">Comprehensive Logs Viewer</CardTitle>
+                      <CardDescription className="mt-1">
+                        View all activity logs, system events, and API analytics in one place
+                      </CardDescription>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => fetchUnifiedLogs(1, true)}>
+                      <RefreshCw className={`h-4 w-4 mr-2 ${unifiedLogsLoading ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    <Input
+                      placeholder="Search logs..."
+                      value={unifiedLogsSearch}
+                      onChange={(e) => setUnifiedLogsSearch(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && fetchUnifiedLogs(1, true)}
+                      className="flex-1 min-w-[200px]"
+                    />
+                    <Input
+                      type="email"
+                      placeholder="Filter by email..."
+                      value={logFilterEmail}
+                      onChange={(e) => setLogFilterEmail(e.target.value)}
+                      className="max-w-xs"
+                    />
+                    <Select value={unifiedLogsType} onValueChange={setUnifiedLogsType}>
+                      <SelectTrigger className="w-[150px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Types</SelectItem>
+                        <SelectItem value="activity">Activity</SelectItem>
+                        <SelectItem value="system">System</SelectItem>
+                        <SelectItem value="api">API</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="date"
+                      placeholder="Start date"
+                      value={unifiedLogsStartDate}
+                      onChange={(e) => setUnifiedLogsStartDate(e.target.value)}
+                      className="max-w-xs"
+                    />
+                    <Input
+                      type="date"
+                      placeholder="End date"
+                      value={unifiedLogsEndDate}
+                      onChange={(e) => setUnifiedLogsEndDate(e.target.value)}
+                      className="max-w-xs"
+                    />
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => {
+                        setUnifiedLogsSearch("");
+                        setLogFilterEmail("");
+                        setUnifiedLogsStartDate("");
+                        setUnifiedLogsEndDate("");
+                        setUnifiedLogsType("all");
+                        fetchUnifiedLogs(1, true);
+                      }}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                  
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    Showing {unifiedLogs.length} of {unifiedLogsTotal} logs
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {unifiedLogsLoading && unifiedLogs.length === 0 ? (
+                      <div className="text-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                        <p className="text-muted-foreground">Loading logs...</p>
                       </div>
-                    );
-                  })}
-                  {filteredLogs.length === 0 && (
-                    <p className="text-center text-muted-foreground py-8">No logs found</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                    ) : unifiedLogs.length > 0 ? (
+                      <>
+                        {unifiedLogs.map((log, index) => {
+                          const logType = log.log_type || 'unknown';
+                          const timestamp = log.timestamp || log.display_time;
+                          const isError = log.status === 'error' || log.status === 'failed' || (log.status_code && log.status_code >= 400);
+                          
+                          return (
+                            <Card key={`${log.id || log.log_type}-${index}`} className={`hover:bg-slate-50 transition ${isError ? 'border-red-200 bg-red-50/30' : ''}`}>
+                              <CardContent className="p-3 sm:p-4">
+                                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                                      <Badge variant={logType === 'activity' ? 'default' : logType === 'system' ? 'secondary' : 'outline'}>
+                                        {logType.toUpperCase()}
+                                      </Badge>
+                                      
+                                      {log.action_type && (
+                                        <Badge variant="outline">{log.action_type}</Badge>
+                                      )}
+                                      {log.event_type && (
+                                        <Badge variant="outline">{log.event_type}</Badge>
+                                      )}
+                                      {log.endpoint && (
+                                        <Badge variant="outline" className="font-mono text-xs">
+                                          {log.method} {log.endpoint}
+                                        </Badge>
+                                      )}
+                                      
+                                      {log.status && (
+                                        <Badge className={log.status === 'success' ? 'bg-green-500' : log.status === 'error' || log.status === 'failed' ? 'bg-red-500' : 'bg-yellow-500'}>
+                                          {log.status}
+                                        </Badge>
+                                      )}
+                                      {log.status_code && (
+                                        <Badge className={log.status_code >= 400 ? 'bg-red-500' : log.status_code >= 300 ? 'bg-yellow-500' : 'bg-green-500'}>
+                                          {log.status_code}
+                                        </Badge>
+                                      )}
+                                      
+                                      {log.response_time_ms && (
+                                        <Badge variant="outline" className={log.response_time_ms > 1000 ? 'text-red-600' : log.response_time_ms > 500 ? 'text-yellow-600' : ''}>
+                                          {log.response_time_ms}ms
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    
+                                    {log.user_email && (
+                                      <p className="text-sm font-medium mb-1">{log.user_email}</p>
+                                    )}
+                                    
+                                    {log.action_category && (
+                                      <p className="text-xs text-muted-foreground mb-1">Category: {log.action_category}</p>
+                                    )}
+                                    {log.event_category && (
+                                      <p className="text-xs text-muted-foreground mb-1">Category: {log.event_category}</p>
+                                    )}
+                                    
+                                    {log.details && Object.keys(log.details).length > 0 && (
+                                      <div className="mt-2 p-2 bg-slate-100 rounded text-xs font-mono overflow-x-auto">
+                                        <pre className="whitespace-pre-wrap">{JSON.stringify(log.details, null, 2).substring(0, 300)}</pre>
+                                      </div>
+                                    )}
+                                    
+                                    {log.error_message && (
+                                      <div className="mt-2 p-2 bg-red-50 border-l-2 border-red-400 rounded text-xs text-red-700">
+                                        <strong>Error:</strong> {log.error_message}
+                                      </div>
+                                    )}
+                                    
+                                    {log.duration_ms && (
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        Duration: {log.duration_ms}ms
+                                      </p>
+                                    )}
+                                  </div>
+                                  
+                                  <div className="text-left sm:text-right sm:ml-4 flex-shrink-0">
+                                    <span className="text-xs text-muted-foreground block">
+                                      {timestamp ? formatDateTimeForTimezone(timestamp, ADMIN_TIMEZONE, { includeZone: true }) : 'N/A'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                        
+                        {unifiedLogsPage < Math.ceil(unifiedLogsTotal / 100) && (
+                          <div className="text-center pt-4">
+                            <Button 
+                              variant="outline" 
+                              onClick={() => fetchUnifiedLogs(unifiedLogsPage + 1, false)}
+                              disabled={unifiedLogsLoading}
+                            >
+                              {unifiedLogsLoading ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  Loading...
+                                </>
+                              ) : (
+                                <>
+                                  Load More ({unifiedLogsTotal - unifiedLogs.length} remaining)
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-center py-8">
+                        <p className="text-muted-foreground mb-4">No logs found</p>
+                        <Button onClick={() => fetchUnifiedLogs(1, true)}>Refresh</Button>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+              
+              {/* Email Logs (Legacy) */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Email Send Logs</CardTitle>
+                  <CardDescription>Email delivery status logs</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {filteredLogs.map((log) => {
+                      const timestamp = log.local_sent_at || log.sent_at;
+                      return (
+                        <div key={log.id} className="flex items-center justify-between p-3 border rounded-lg text-sm">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">{log.email}</p>
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                log.status === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                              }`}>
+                                {log.status}
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">{log.subject}</p>
+                            {log.error_message && (
+                              <p className="text-xs text-red-600 mt-1">Error: {log.error_message}</p>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {formatDateTimeForTimezone(timestamp, ADMIN_TIMEZONE, {
+                              includeZone: true,
+                            })}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {filteredLogs.length === 0 && (
+                      <p className="text-center text-muted-foreground py-8">No email logs found</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="events">
@@ -3786,6 +4024,28 @@ function UserApp() {
 
   const email = user?.primaryEmailAddress?.emailAddress;
 
+  const syncClerkUserToDatabase = useCallback(async () => {
+    if (!user || !email) {
+      return;
+    }
+
+    try {
+      // Sync Clerk user data to database
+      await axios.post(`${API}/auth/clerk-sync`, {
+        clerk_user_id: user.id,
+        email: email,
+        first_name: user.firstName,
+        last_name: user.lastName,
+        image_url: user.imageUrl,
+      });
+      
+      console.log(`✅ Synced Clerk user to database: ${email}`);
+    } catch (error) {
+      console.error("Failed to sync Clerk user:", error);
+      // Don't show error to user - this is background sync
+    }
+  }, [user, email]);
+
   const loadUserProfile = useCallback(async () => {
     if (!email) {
       return;
@@ -3796,6 +4056,10 @@ function UserApp() {
     setLoadError(false);
 
     try {
+      // First, sync Clerk user data to database
+      await syncClerkUserToDatabase();
+      
+      // Then load user profile
       const response = await axios.get(`${API}/users/${email}`);
       setAppUser(response.data);
     } catch (error) {
@@ -3810,7 +4074,7 @@ function UserApp() {
     } finally {
       setLoading(false);
     }
-  }, [email]);
+  }, [email, syncClerkUserToDatabase]);
 
   useEffect(() => {
     if (!isLoaded) {
@@ -3879,7 +4143,7 @@ function ErrorState({ onRetry }) {
     <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-center p-6">
       <h2 className="text-xl font-semibold text-gray-800">Something went wrong</h2>
       <p className="text-sm text-muted-foreground max-w-sm">
-        We couldn't load your InboxInspire account data. Please try again in a moment.
+        We couldn't load your Tend account data. Please try again in a moment.
       </p>
       <Button onClick={onRetry}>
         Try Again

@@ -486,7 +486,7 @@ WRITE A RESPONSE THAT:
 CRITICAL RULES:
 - Use their name ONCE at the start, then refer to them naturally (you, your, etc.)
 - Do NOT say "Hi {user_name}" and then "Hey {user_name}" - only ONE greeting
-- Do NOT include "[Your Name]" or any placeholder - sign as "Your InboxInspire Coach"
+- Do NOT include "[Your Name]" or any placeholder - sign as "Your Tend Coach"
 - Be genuine, not robotic
 - Reference their specific words when possible
 - Keep it brief but meaningful (60-100 words)
@@ -525,13 +525,13 @@ CRITICAL RULES:
             cleaned_message = cleaned_message.replace(f"Hey {user_name},", "").replace(f"Hey {user_name}", "")
         
         # Remove any placeholder text
-        cleaned_message = cleaned_message.replace("[Your Name]", "InboxInspire")
-        cleaned_message = cleaned_message.replace("Your Name", "InboxInspire")
+        cleaned_message = cleaned_message.replace("[Your Name]", "Tend")
+        cleaned_message = cleaned_message.replace("Your Name", "Tend")
         
         # Ensure it ends with proper signature (remove if LLM added wrong one)
-        if "Your InboxInspire Coach" not in cleaned_message and "InboxInspire" not in cleaned_message[-50:]:
+        if "Your Tend Coach" not in cleaned_message and "Tend" not in cleaned_message[-50:]:
             # Add signature if missing
-            cleaned_message = cleaned_message.rstrip() + "\n\nYour InboxInspire Coach"
+            cleaned_message = cleaned_message.rstrip() + "\n\nYour Tend Coach"
         
         # Send email with better formatting
         html_content = f"""
@@ -554,7 +554,7 @@ CRITICAL RULES:
             )
             if original_msg and original_msg.get("message_id"):
                 # Use stored Message-ID or generate one from message ID
-                in_reply_to = original_msg.get("message_id") or f"<msg-{linked_message_id}@inboxinspire.com>"
+                in_reply_to = original_msg.get("message_id") or f"<msg-{linked_message_id}@maketend.com>"
                 references = in_reply_to
         
         success, error = await send_email(

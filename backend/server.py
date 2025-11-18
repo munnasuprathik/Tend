@@ -1,7 +1,10 @@
 from fastapi import FastAPI, APIRouter, HTTPException, BackgroundTasks, Depends, Header, Request
+from fastapi import Request as FastAPIRequest
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
@@ -26,6 +29,11 @@ import time
 import sys
 from pathlib import Path
 
+# Rate limiting imports
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
 # Add parent directory to Python path for imports (so backend can be imported as module)
 backend_dir = Path(__file__).parent
 parent_dir = backend_dir.parent
@@ -42,12 +50,16 @@ import html
 import json
 import random
 
+# Email queue with rate limiting for scalability (10k+ users)
+# Limits concurrent email sends to prevent SMTP server overload
+EMAIL_SEND_SEMAPHORE = asyncio.Semaphore(15)  # Max 15 concurrent email sends
+
 # Import from new modular structure
 # Try absolute import first (when running from parent), fallback to relative (when running from backend/)
 try:
     from backend.config import (
         db, openai_client, TAVILY_API_KEY, TAVILY_SEARCH_URL, 
-        personality_voice_cache, get_env, client
+        personality_voice_cache, get_env, client, validate_environment
     )
     from backend.constants import (
         MESSAGE_TYPES as message_types,
@@ -83,7 +95,7 @@ except ImportError:
     # Fallback to relative imports when running from backend directory
     from config import (
         db, openai_client, TAVILY_API_KEY, TAVILY_SEARCH_URL, 
-        personality_voice_cache, get_env, client
+        personality_voice_cache, get_env, client, validate_environment
     )
     from constants import (
         MESSAGE_TYPES as message_types,
@@ -347,10 +359,10 @@ def render_email_html(
             </div>
             <div class="signature">
                 <span>With you in this,</span>
-                <span>InboxInspire Coach</span>
+                <span>Tend Coach</span>
             </div>
             <div class="footer">
-                You are receiving this email because you subscribed to InboxInspire updates.
+                You are receiving this email because you subscribed to Tend updates.
             </div>
         </div>
     </body>
@@ -498,7 +510,12 @@ async def record_email_log(
     await db.email_logs.insert_one(log_doc.model_dump())
 
 # Create the main app without a prefix
-app = FastAPI()
+app = FastAPI(title="Tend API", version="2.0")
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -534,112 +551,123 @@ async def send_email(
     """
     Send email via SMTP with retry logic and improved error handling.
     Handles Hostinger SMTP and other providers with appropriate settings.
+    Uses semaphore to limit concurrent sends for scalability (10k+ users).
     """
-    smtp_host = os.getenv('SMTP_HOST')
-    smtp_port = int(os.getenv('SMTP_PORT', '465'))
-    smtp_username = os.getenv('SMTP_USERNAME')
-    smtp_password = os.getenv('SMTP_PASSWORD')
-    
-    if not all([smtp_host, smtp_username, smtp_password]):
-        error_msg = "SMTP configuration incomplete - missing SMTP_HOST, SMTP_USERNAME, or SMTP_PASSWORD"
-        logger.error(error_msg)
-        return False, error_msg
-    
-    # Determine SSL/TLS settings based on port
-    # Port 465 uses SSL (implicit TLS), port 587 uses STARTTLS (explicit TLS)
-    # aiosmtplib handles this automatically, but we set use_tls=True for both
-    is_ssl_port = smtp_port == 465
-    is_starttls_port = smtp_port == 587
-    
-    msg = MIMEMultipart('alternative')
-    msg['From'] = os.getenv('SENDER_EMAIL', smtp_username)
-    msg['To'] = to_email
-    msg['Subject'] = subject
-    
-    # Add email threading headers (for proper conversation grouping)
-    if in_reply_to:
-        msg['In-Reply-To'] = in_reply_to
-    if references:
-        msg['References'] = references
-    
-    # Generate Message-ID for this email (for future threading)
-    import uuid
-    message_id = f"<{str(uuid.uuid4())}@quiccle.com>"
-    msg['Message-ID'] = message_id
-    
-    # Add List-Unsubscribe header for compliance
-    frontend_url = os.getenv('FRONTEND_URL', 'https://aipep.preview.emergentagent.com')
-    unsubscribe_url = f"{frontend_url}/unsubscribe?email={to_email}"
-    msg['List-Unsubscribe'] = f"<{unsubscribe_url}>"
-    msg['List-Unsubscribe-Post'] = "List-Unsubscribe=One-Click"
-    
-    html_part = MIMEText(html_content, 'html')
-    msg.attach(html_part)
-    
-    # Retry logic: Try up to 3 times with exponential backoff
-    max_retries = 3
-    retry_delays = [2, 5, 10]  # seconds
-    
-    for attempt in range(max_retries):
-        try:
-            # aiosmtplib automatically handles SSL/TLS based on port
-            # Port 465 = SSL (implicit), Port 587 = STARTTLS (explicit)
-            # For Hostinger (port 465), use_tls=True enables SSL connection
-            smtp_kwargs = {
-                "hostname": smtp_host,
-                "port": smtp_port,
-                "username": smtp_username,
-                "password": smtp_password,
-                "timeout": 30  # Increased timeout for Hostinger (30 seconds)
-            }
-            
-            # For port 465 (SSL), use_tls=True enables SSL
-            # For port 587 (STARTTLS), use_tls=True enables STARTTLS
-            if is_ssl_port:
-                # Port 465: SSL connection (implicit TLS)
-                smtp_kwargs["use_tls"] = True
-            elif is_starttls_port:
-                # Port 587: STARTTLS (explicit TLS)
-                smtp_kwargs["use_tls"] = True
-                smtp_kwargs["start_tls"] = True
-            else:
-                # Default: try TLS
-                smtp_kwargs["use_tls"] = True
-            
-            await aiosmtplib.send(msg, **smtp_kwargs)
-            
-            logger.info(f"✅ Email sent successfully to {to_email} (attempt {attempt + 1})")
-            return True, None
-            
-        except asyncio.TimeoutError:
-            error_msg = f"SMTP timeout after 30s (attempt {attempt + 1}/{max_retries})"
-            logger.warning(f"⚠️ {error_msg} - Host: {smtp_host}:{smtp_port}")
-            
-            if attempt < max_retries - 1:
-                wait_time = retry_delays[attempt]
-                logger.info(f"   Retrying in {wait_time} seconds...")
-                await asyncio.sleep(wait_time)
-            else:
-                logger.error(f"❌ Email send failed after {max_retries} attempts: {error_msg}")
-                return False, error_msg
+    # Use semaphore to limit concurrent email sends (prevents SMTP overload)
+    async with EMAIL_SEND_SEMAPHORE:
+        smtp_host = os.getenv('SMTP_HOST')
+        smtp_port = int(os.getenv('SMTP_PORT', '465'))
+        smtp_username = os.getenv('SMTP_USERNAME')
+        smtp_password = os.getenv('SMTP_PASSWORD')
+        
+        if not all([smtp_host, smtp_username, smtp_password]):
+            error_msg = "SMTP configuration incomplete - missing SMTP_HOST, SMTP_USERNAME, or SMTP_PASSWORD"
+            logger.error(error_msg)
+            return False, error_msg
+        
+        # Determine SSL/TLS settings based on port
+        # Port 465 uses SSL (implicit TLS), port 587 uses STARTTLS (explicit TLS)
+        # aiosmtplib handles this automatically, but we set use_tls=True for both
+        is_ssl_port = smtp_port == 465
+        is_starttls_port = smtp_port == 587
+        
+        msg = MIMEMultipart('alternative')
+        msg['From'] = os.getenv('SENDER_EMAIL', smtp_username)
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        
+        # Add email threading headers (for proper conversation grouping)
+        if in_reply_to:
+            msg['In-Reply-To'] = in_reply_to
+        if references:
+            msg['References'] = references
+        
+        # Generate Message-ID for this email (for future threading)
+        import uuid
+        message_id = f"<{str(uuid.uuid4())}@maketend.com>"
+        msg['Message-ID'] = message_id
+        
+        # Add List-Unsubscribe header for compliance
+        frontend_url = os.getenv('FRONTEND_URL', 'https://maketend.com')
+        unsubscribe_url = f"{frontend_url}/unsubscribe?email={to_email}"
+        msg['List-Unsubscribe'] = f"<{unsubscribe_url}>"
+        msg['List-Unsubscribe-Post'] = "List-Unsubscribe=One-Click"
+        
+        html_part = MIMEText(html_content, 'html')
+        msg.attach(html_part)
+        
+        # Retry logic: Try up to 3 times with exponential backoff
+        max_retries = 3
+        retry_delays = [2, 5, 10]  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                # aiosmtplib automatically handles SSL/TLS based on port
+                # Port 465 = SSL (implicit), Port 587 = STARTTLS (explicit)
+                # For Hostinger (port 465), use_tls=True enables SSL connection
+                smtp_kwargs = {
+                    "hostname": smtp_host,
+                    "port": smtp_port,
+                    "username": smtp_username,
+                    "password": smtp_password,
+                    "timeout": 30  # Increased timeout for Hostinger (30 seconds)
+                }
                 
-        except Exception as e:
-            error_msg = str(e)
-            
-            # Check for specific error types
-            if "authentication failed" in error_msg.lower() or "535" in error_msg:
-                logger.error(f"❌ SMTP Authentication failed: {error_msg}")
-                logger.error(f"   Check SMTP_USERNAME and SMTP_PASSWORD in .env")
-                return False, f"Authentication failed: {error_msg}"
-            elif "connection" in error_msg.lower() or "refused" in error_msg.lower():
-                logger.error(f"❌ SMTP Connection failed: {error_msg}")
-                logger.error(f"   Check SMTP_HOST ({smtp_host}) and SMTP_PORT ({smtp_port})")
-                logger.error(f"   For Hostinger, ensure port 465 is open and SSL is enabled")
-                return False, f"Connection failed: {error_msg}"
-            elif "timeout" in error_msg.lower():
+                # For port 465 (SSL), use_tls=True enables SSL
+                # For port 587 (STARTTLS), use_tls=True enables STARTTLS
+                if is_ssl_port:
+                    # Port 465: SSL connection (implicit TLS)
+                    smtp_kwargs["use_tls"] = True
+                elif is_starttls_port:
+                    # Port 587: STARTTLS (explicit TLS)
+                    smtp_kwargs["use_tls"] = True
+                    smtp_kwargs["start_tls"] = True
+                else:
+                    # Default: try TLS
+                    smtp_kwargs["use_tls"] = True
+                
+                await aiosmtplib.send(msg, **smtp_kwargs)
+                
+                logger.info(f"✅ Email sent successfully to {to_email} (attempt {attempt + 1})")
+                return True, None
+                
+            except asyncio.TimeoutError:
+                error_msg = f"SMTP timeout after 30s (attempt {attempt + 1}/{max_retries})"
+                logger.warning(f"⚠️ {error_msg} - Host: {smtp_host}:{smtp_port}")
+                
                 if attempt < max_retries - 1:
                     wait_time = retry_delays[attempt]
-                    logger.warning(f"⚠️ SMTP timeout (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s...")
+                    logger.info(f"   Retrying in {wait_time} seconds...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error(f"❌ Email send failed after {max_retries} attempts: {error_msg}")
+                    return False, error_msg
+                
+            except Exception as e:
+                error_msg = str(e)
+                
+                # Check for specific error types
+                if "authentication failed" in error_msg.lower() or "535" in error_msg:
+                    logger.error(f"❌ SMTP Authentication failed: {error_msg}")
+                    logger.error(f"   Check SMTP_USERNAME and SMTP_PASSWORD in .env")
+                    if attempt < max_retries - 1:
+                        wait_time = retry_delays[attempt]
+                        await asyncio.sleep(wait_time)
+                        continue
+                    return False, f"Authentication failed: {error_msg}"
+                elif "connection" in error_msg.lower() or "refused" in error_msg.lower():
+                    logger.error(f"❌ SMTP Connection failed: {error_msg}")
+                    logger.error(f"   Check SMTP_HOST ({smtp_host}) and SMTP_PORT ({smtp_port})")
+                    logger.error(f"   For Hostinger, ensure port 465 is open and SSL is enabled")
+                    if attempt < max_retries - 1:
+                        wait_time = retry_delays[attempt]
+                        await asyncio.sleep(wait_time)
+                        continue
+                    return False, f"Connection failed: {error_msg}"
+                elif "timeout" in error_msg.lower():
+                    if attempt < max_retries - 1:
+                        wait_time = retry_delays[attempt]
+                        logger.warning(f"⚠️ SMTP timeout (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s...")
                     await asyncio.sleep(wait_time)
                     continue
                 else:
@@ -1257,21 +1285,27 @@ async def update_streak(email: str, sent_timestamp: Optional[datetime] = None):
 # Send email to a SPECIFIC user (called by scheduler)
 async def send_motivation_to_user(email: str):
     """Send motivation email to a specific user - called by their scheduled job"""
+    start_time = time.time()
     subject_line: Optional[str] = None
     sent_dt: Optional[datetime] = None
     schedule: Optional[dict] = None
+    
+    logger.info(f"📧 Scheduled email job triggered for: {email}")
+    
     try:
         # Get the specific user
         user_data = await db.users.find_one({"email": email, "active": True}, {"_id": 0})
         
         if not user_data:
-            logger.warning(f"User {email} not found or inactive")
+            logger.warning(f"⚠️ User {email} not found or inactive - skipping email")
             return
+        
+        logger.debug(f"User found: {email}, active: {user_data.get('active')}")
         
         # Check if paused or skip next
         schedule = user_data.get('schedule', {})
         if schedule.get('paused', False):
-            logger.info(f"Skipping {email} - schedule paused")
+            logger.info(f"⏸️ Skipping {email} - schedule paused")
             return
         
         if schedule.get('skip_next', False):
@@ -1280,7 +1314,7 @@ async def send_motivation_to_user(email: str):
                 {"email": email},
                 {"$set": {"schedule.skip_next": False}}
             )
-            logger.info(f"Skipped {email} - skip_next was set")
+            logger.info(f"⏭️ Skipped {email} - skip_next was set (now reset)")
             return
         
         # Get user data (we'll update streak after sending email)
@@ -1289,8 +1323,10 @@ async def send_motivation_to_user(email: str):
         # Get current personality
         personality = get_current_personality(user_data)
         if not personality:
-            logger.warning(f"No personality found for {email}")
+            logger.warning(f"⚠️ No personality found for {email} - cannot send email")
             return
+        
+        logger.debug(f"Using personality: {personality.value if personality else 'None'} for {email}")
         
         # Calculate streak FIRST (before generating message) to use correct streak in email
         sent_dt = datetime.now(timezone.utc)
@@ -1389,7 +1425,7 @@ async def send_motivation_to_user(email: str):
         # Save to message history with message type for tracking
         message_id = str(uuid.uuid4())
         # Generate Message-ID for email threading
-        email_message_id = f"<msg-{message_id}@inboxinspire.com>"
+        email_message_id = f"<msg-{message_id}@maketend.com>"
         
         history_doc = {
             "id": message_id,
@@ -1434,10 +1470,14 @@ async def send_motivation_to_user(email: str):
             used_fallback,
             research_snippet
         )
+        
+        logger.debug(f"Generated subject line for {email}: {subject_line[:50]}...")
+        logger.info(f"📤 Sending email to {email} (streak: {streak_count}, personality: {personality.value})")
 
         success, error = await send_email(email, subject_line, html_content)
         
         if success:
+            logger.info(f"✅ Email sent successfully to {email}")
             # Update streak and last email sent time
             # Rotate personality if sequential
             personalities = user_data.get('personalities', [])
@@ -1462,6 +1502,9 @@ async def send_motivation_to_user(email: str):
             
             logger.info(f"✅ Email sent to {email} - Streak updated to {streak_count} days")
             
+            elapsed_time = time.time() - start_time
+            logger.info(f"⏱️ Email job completed for {email} in {elapsed_time:.2f}s")
+            
             await record_email_log(
                 email=email,
                 subject=subject_line,
@@ -1469,8 +1512,8 @@ async def send_motivation_to_user(email: str):
                 sent_dt=sent_dt,
                 timezone_value=schedule.get("timezone"),
             )
-            logger.info(f"✓ Sent motivation to {email}")
         else:
+            logger.error(f"❌ Failed to send email to {email}: {error}")
             await record_email_log(
                 email=email,
                 subject=subject_line,
@@ -1479,10 +1522,10 @@ async def send_motivation_to_user(email: str):
                 timezone_value=schedule.get("timezone"),
                 error_message=error,
             )
-            logger.error(f"✗ Failed to send to {email}: {error}")
             
     except Exception as e:
-        logger.error(f"Error sending to {email}: {str(e)}")
+        elapsed_time = time.time() - start_time
+        logger.error(f"❌ Error sending email to {email} after {elapsed_time:.2f}s: {str(e)}", exc_info=True)
         await record_email_log(
             email=email,
             subject=subject_line or "Motivation Delivery",
@@ -1494,51 +1537,60 @@ async def send_motivation_to_user(email: str):
 
 # Background job to send scheduled emails (DEPRECATED - keeping for backwards compatibility)
 async def send_scheduled_motivations():
-    """DEPRECATED: This function is no longer used. Each user has their own scheduled job."""
+    """
+    DEPRECATED: This function is no longer used. Each user has their own scheduled job.
+    Updated to use pagination for scalability (10k+ users).
+    """
     logger.warning("send_scheduled_motivations called - this function is deprecated")
     try:
-        users = await db.users.find({"active": True}, {"_id": 0}).to_list(1000)
-        
-        for user_data in users:
-            try:
-                # Check if paused or skip next
-                schedule = user_data.get('schedule', {})
-                if schedule.get('paused', False):
-                    continue
-                
-                if schedule.get('skip_next', False):
-                    # Reset skip_next flag
-                    await db.users.update_one(
-                        {"email": user_data['email']},
-                        {"$set": {"schedule.skip_next": False}}
+        # Use pagination for scalability
+        batch_size = 100
+        skip = 0
+        while True:
+            users = await db.users.find({"active": True}, {"_id": 0}).skip(skip).limit(batch_size).to_list(batch_size)
+            if not users:
+                break
+            
+            for user_data in users:
+                try:
+                    # Check if paused or skip next
+                    schedule = user_data.get('schedule', {})
+                    if schedule.get('paused', False):
+                        continue
+                    
+                    if schedule.get('skip_next', False):
+                        # Reset skip_next flag
+                        await db.users.update_one(
+                            {"email": user_data['email']},
+                            {"$set": {"schedule.skip_next": False}}
+                        )
+                        continue
+                    
+                    # Get current personality
+                    personality = get_current_personality(user_data)
+                    if not personality:
+                        continue
+                    
+                    # Generate message
+                    message = await generate_motivational_message(
+                        user_data['goals'],
+                        personality,
+                        user_data.get('name')
                     )
-                    continue
-                
-                # Get current personality
-                personality = get_current_personality(user_data)
-                if not personality:
-                    continue
-                
-                # Generate message
-                message = await generate_motivational_message(
-                    user_data['goals'],
-                    personality,
-                    user_data.get('name')
-                )
-                
-                # Create HTML email
-                # Save to message history
-                message_id = str(uuid.uuid4())
-                history = MessageHistory(
-                    id=message_id,
-                    email=user_data['email'],
-                    message=message,
-                    personality=personality
-                )
-                await db.message_history.insert_one(history.model_dump())
-                
-                html_content = f"""
-                <html>
+                    
+                    # Create HTML email
+                    # Save to message history
+                    message_id = str(uuid.uuid4())
+                    history = MessageHistory(
+                        id=message_id,
+                        email=user_data['email'],
+                        message=message,
+                        personality=personality
+                    )
+                    await db.message_history.insert_one(history.model_dump())
+                    
+                    html_content = f"""
+                    <html>
                 <head>
                     <style>
                         body {{ font-family: 'Georgia', serif; line-height: 1.8; color: #333; }}
@@ -1572,53 +1624,55 @@ async def send_scheduled_motivations():
                             </div>
                         </div>
                         <div class="footer">
-                            <p>You're receiving this because you subscribed to InboxInspire</p>
+                            <p>You're receiving this because you subscribed to Tend</p>
                             <p>Keep pushing towards your goals!</p>
                         </div>
                     </div>
                 </body>
-                </html>
-                """
-                
-                success, error = await send_email(
-                    user_data['email'],
-                    f"Your Daily Motivation from {personality.value}",
-                    html_content
-                )
-                
-                if success:
-                    # Calculate and update streak
-                    sent_dt = datetime.now(timezone.utc)
-                    sent_timestamp = sent_dt.isoformat()
-                    new_streak = await update_streak(user_data['email'], sent_dt)
+                    </html>
+                    """
                     
-                    # Rotate personality if sequential
-                    personalities = user_data.get('personalities', [])
-                    update_data = {
-                        "last_email_sent": sent_timestamp,
-                        "last_active": sent_timestamp,
-                        "streak_count": new_streak
-                    }
-                    
-                    if user_data.get('rotation_mode') == 'sequential' and len(personalities) > 1:
-                        current_index = user_data.get('current_personality_index', 0)
-                        next_index = (current_index + 1) % len(personalities)
-                        update_data["current_personality_index"] = next_index
-                    
-                    await db.users.update_one(
-                        {"email": user_data['email']},
-                        {
-                            "$set": update_data,
-                            "$inc": {"total_messages_received": 1}
-                        }
+                    success, error = await send_email(
+                        user_data['email'],
+                        f"Your Daily Motivation from {personality.value}",
+                        html_content
                     )
                     
-                    logging.info(f"Sent motivation to {user_data['email']}")
-                else:
-                    logging.error(f"Failed to send to {user_data['email']}: {error}")
-                    
-            except Exception as e:
-                logging.error(f"Error processing {user_data.get('email', 'unknown')}: {str(e)}")
+                    if success:
+                        # Calculate and update streak
+                        sent_dt = datetime.now(timezone.utc)
+                        sent_timestamp = sent_dt.isoformat()
+                        new_streak = await update_streak(user_data['email'], sent_dt)
+                        
+                        # Rotate personality if sequential
+                        personalities = user_data.get('personalities', [])
+                        update_data = {
+                            "last_email_sent": sent_timestamp,
+                            "last_active": sent_timestamp,
+                            "streak_count": new_streak
+                        }
+                        
+                        if user_data.get('rotation_mode') == 'sequential' and len(personalities) > 1:
+                            current_index = user_data.get('current_personality_index', 0)
+                            next_index = (current_index + 1) % len(personalities)
+                            update_data["current_personality_index"] = next_index
+                        
+                        await db.users.update_one(
+                            {"email": user_data['email']},
+                            {
+                                "$set": update_data,
+                                "$inc": {"total_messages_received": 1}
+                            }
+                        )
+                        
+                        logging.info(f"Sent motivation to {user_data['email']}")
+                    else:
+                        logging.error(f"Failed to send to {user_data['email']}: {error}")
+                        
+                except Exception as e:
+                    logging.error(f"Error processing {user_data.get('email', 'unknown')}: {str(e)}")
+            
+            skip += batch_size
         
     except Exception as e:
         logging.error(f"Scheduled job error: {str(e)}")
@@ -1626,124 +1680,223 @@ async def send_scheduled_motivations():
 # Routes
 @api_router.get("/")
 async def root():
-    return {"message": "InboxInspire API", "version": "2.0"}
+    return {"message": "Tend API", "version": "2.0"}
 
-@api_router.post("/auth/login")
-async def login(request: LoginRequest, background_tasks: BackgroundTasks, req: Request):
-    """Send magic link to email"""
-    # Track login attempt
-    ip_address = req.client.host if req.client else None
-    user_agent = req.headers.get("user-agent")
-    
-    # Generate magic link token
-    token = secrets.token_urlsafe(32)
-    
-    # Check if user exists
-    user = await db.users.find_one({"email": request.email}, {"_id": 0})
-    
-    if user:
-        # Update existing user with new token
-        await db.users.update_one(
-            {"email": request.email},
-            {"$set": {"magic_link_token": token}}
-        )
-        user_exists = True
-        
-        # Track login request for existing user
-        await tracker.log_user_activity(
-            action_type="login_requested",
-            user_email=request.email,
-            details={"user_type": "existing"},
-            ip_address=ip_address,
-            user_agent=user_agent
-        )
-    else:
-        # Store pending login
-        await db.pending_logins.update_one(
-            {"email": request.email},
-            {"$set": {"token": token, "created_at": datetime.now(timezone.utc).isoformat()}},
-            upsert=True
-        )
-        user_exists = False
-        
-        # Track login request for new user
-        await tracker.log_user_activity(
-            action_type="login_requested",
-            user_email=request.email,
-            details={"user_type": "new"},
-            ip_address=ip_address,
-            user_agent=user_agent
-        )
-    
-    # Prepare magic link email
-    magic_link = f"https://aipep.preview.emergentagent.com/?token={token}&email={request.email}"
-    
-    html_content = f"""
-    <html>
-    <head>
-        <style>
-            body {{ font-family: Arial, sans-serif; }}
-            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .button {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h2>Welcome to InboxInspire!</h2>
-            <p>Click the button below to access your account:</p>
-            <p><a href="{magic_link}" class="button">Access My Account</a></p>
-            <p style="color: #666; font-size: 12px;">Or copy this link: {magic_link}</p>
-            <p style="color: #666; font-size: 12px;">This link expires in 1 hour.</p>
-        </div>
-    </body>
-    </html>
+@api_router.get("/health")
+@limiter.exempt  # Health checks should not be rate limited
+async def health_check():
     """
+    Health check endpoint for monitoring and load balancers.
+    Returns 200 if healthy, 503 if unhealthy.
+    """
+    checks = {
+        "status": "healthy",
+        "database": "unknown",
+        "openai": "unknown",
+        "smtp": "unknown",
+        "version": "2.0",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
     
-    # Send email in background - immediate response to user
-    background_tasks.add_task(send_email, request.email, "Your InboxInspire Login Link", html_content)
+    # Check database connectivity
+    try:
+        await db.command("ping")
+        checks["database"] = "connected"
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        checks["database"] = "disconnected"
+        checks["status"] = "unhealthy"
+        checks["database_error"] = str(e)
     
-    return {"status": "success", "message": "Login link sent to your email", "user_exists": user_exists}
-
-@api_router.post("/auth/verify")
-async def verify_token(request: VerifyTokenRequest):
-    """Verify magic link token"""
-    # Check existing user
-    user = await db.users.find_one({"email": request.email, "magic_link_token": request.token}, {"_id": 0})
-    
-    if user:
-        # Clear token after use
-        await db.users.update_one(
-            {"email": request.email},
-            {"$set": {"magic_link_token": None}}
+    # Check OpenAI API connectivity
+    try:
+        # Simple API call to check connectivity
+        await asyncio.wait_for(
+            openai_client.models.list(),
+            timeout=5.0
         )
+        checks["openai"] = "connected"
+    except asyncio.TimeoutError:
+        logger.warning("OpenAI API health check timed out")
+        checks["openai"] = "timeout"
+        checks["status"] = "degraded"
+    except Exception as e:
+        logger.error(f"OpenAI API health check failed: {e}")
+        checks["openai"] = "disconnected"
+        checks["status"] = "degraded"
+        checks["openai_error"] = str(e)
+    
+    # Check SMTP configuration (not actual connection, just config)
+    smtp_host = os.getenv('SMTP_HOST')
+    smtp_username = os.getenv('SMTP_USERNAME')
+    smtp_password = os.getenv('SMTP_PASSWORD')
+    
+    if all([smtp_host, smtp_username, smtp_password]):
+        checks["smtp"] = "configured"
+    else:
+        checks["smtp"] = "not_configured"
+        if checks["status"] == "healthy":
+            checks["status"] = "degraded"
+    
+    # Determine status code
+    status_code = 200 if checks["status"] == "healthy" else 503
+    
+    return JSONResponse(content=checks, status_code=status_code)
+
+@api_router.post("/auth/clerk-sync")
+async def sync_clerk_user(request: Request):
+    """
+    Sync Clerk user data to database.
+    Called when user signs in with Clerk to ensure all user data is stored in MongoDB.
+    """
+    try:
+        # Get Clerk user data from request body
+        body = await request.json()
+        clerk_user_id = body.get("clerk_user_id")
+        clerk_email = body.get("email")
+        clerk_first_name = body.get("first_name")
+        clerk_last_name = body.get("last_name")
+        clerk_image_url = body.get("image_url")
         
-        if isinstance(user.get('created_at'), str):
-            user['created_at'] = datetime.fromisoformat(user['created_at'])
-        if isinstance(user.get('last_email_sent'), str):
-            user['last_email_sent'] = datetime.fromisoformat(user['last_email_sent'])
+        if not clerk_email:
+            raise HTTPException(status_code=400, detail="Email is required")
         
-        return {"status": "success", "user_exists": True, "user": user}
-    
-    # Check pending login
-    pending = await db.pending_logins.find_one({"email": request.email, "token": request.token})
-    
-    if pending:
-        # Valid token for new user
-        return {"status": "success", "user_exists": False}
-    
-    raise HTTPException(status_code=401, detail="Invalid or expired token")
+        logger.info(f"🔄 Syncing Clerk user to database: {clerk_email}")
+        
+        # Check if user exists
+        user = await db.users.find_one({"email": clerk_email}, {"_id": 0})
+        
+        if user:
+            # Update existing user with Clerk data
+            update_data = {
+                "clerk_user_id": clerk_user_id,
+                "last_active": datetime.now(timezone.utc).isoformat(),
+            }
+            
+            # Update name if provided and different
+            if clerk_first_name or clerk_last_name:
+                full_name = f"{clerk_first_name or ''} {clerk_last_name or ''}".strip()
+                if full_name and user.get("name") != full_name:
+                    update_data["name"] = full_name
+            
+            # Update image if provided
+            if clerk_image_url and user.get("image_url") != clerk_image_url:
+                update_data["image_url"] = clerk_image_url
+            
+            await db.users.update_one(
+                {"email": clerk_email},
+                {"$set": update_data}
+            )
+            
+            logger.info(f"✅ Updated existing user in database: {clerk_email}")
+            
+            # Track activity
+            await tracker.log_user_activity(
+                action_type="clerk_signin",
+                user_email=clerk_email,
+                details={"clerk_user_id": clerk_user_id, "sync_type": "existing_user"}
+            )
+            
+            # Return updated user
+            updated_user = await db.users.find_one({"email": clerk_email}, {"_id": 0})
+            if isinstance(updated_user.get('created_at'), str):
+                updated_user['created_at'] = datetime.fromisoformat(updated_user['created_at'])
+            if isinstance(updated_user.get('last_email_sent'), str):
+                updated_user['last_email_sent'] = datetime.fromisoformat(updated_user['last_email_sent'])
+            
+            return {
+                "status": "success",
+                "message": "User synced",
+                "user_exists": True,
+                "user": updated_user
+            }
+        else:
+            # Create new user record with Clerk data
+            # User will complete onboarding separately
+            new_user = {
+                "email": clerk_email,
+                "clerk_user_id": clerk_user_id,
+                "name": f"{clerk_first_name or ''} {clerk_last_name or ''}".strip() or clerk_email.split("@")[0],
+                "image_url": clerk_image_url,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "last_active": datetime.now(timezone.utc).isoformat(),
+                "active": False,  # Will be activated after onboarding
+                "streak_count": 0,
+                "total_messages_received": 0,
+            }
+            
+            await db.users.insert_one(new_user)
+            
+            logger.info(f"✅ Created new user record in database: {clerk_email}")
+            
+            # Track activity
+            await tracker.log_user_activity(
+                action_type="clerk_signin",
+                user_email=clerk_email,
+                details={"clerk_user_id": clerk_user_id, "sync_type": "new_user"}
+            )
+            
+            return {
+                "status": "success",
+                "message": "User created, onboarding required",
+                "user_exists": False,
+                "user": {k: v for k, v in new_user.items() if k != "_id"}
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ Error syncing Clerk user: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to sync user: {str(e)}")
+
+# DEPRECATED: Magic link authentication removed - using Clerk only
+@api_router.post("/auth/login")
+@limiter.limit("5/minute")
+async def login_deprecated(login_request: LoginRequest, background_tasks: BackgroundTasks, request: FastAPIRequest):
+    """DEPRECATED: Magic link authentication - Use Clerk authentication instead"""
+    logger.warning(f"⚠️ Deprecated magic link login attempt for: {login_request.email}")
+    raise HTTPException(
+        status_code=410, 
+        detail="Magic link authentication is deprecated. Please use Clerk authentication."
+    )
+
+# DEPRECATED: Magic link verification removed - using Clerk only
+@api_router.post("/auth/verify")
+async def verify_token_deprecated(request: VerifyTokenRequest):
+    """DEPRECATED: Magic link verification - Use Clerk authentication instead"""
+    logger.warning(f"⚠️ Deprecated magic link verification attempt for: {request.email}")
+    raise HTTPException(
+        status_code=410,
+        detail="Magic link authentication is deprecated. Please use Clerk authentication."
+    )
 
 @api_router.post("/onboarding")
 async def complete_onboarding(request: OnboardingRequest, req: Request):
-    """Complete onboarding for new user"""
-    # Check if user already exists
-    existing = await db.users.find_one({"email": request.email}, {"_id": 0})
-    if existing:
-        raise HTTPException(status_code=400, detail="User already exists")
+    """
+    Complete onboarding for new user.
+    Stores ALL user data in MongoDB including Clerk user ID.
+    If user was created by Clerk sync, updates with onboarding data.
+    """
+    start_time = time.time()
+    logger.info(f"🎯 Onboarding started for: {request.email}")
     
+    # Check if user already exists (may have been created by Clerk sync)
+    existing = await db.users.find_one({"email": request.email}, {"_id": 0})
+    
+    logger.debug(f"Creating/updating user profile for: {request.email}")
     profile = UserProfile(**request.model_dump())
     doc = profile.model_dump()
-    doc['created_at'] = doc['created_at'].isoformat()
+    
+    # Preserve Clerk user ID if user was created by Clerk sync
+    if existing and existing.get("clerk_user_id"):
+        doc['clerk_user_id'] = existing.get("clerk_user_id")
+        logger.debug(f"Preserved Clerk user ID: {existing.get('clerk_user_id')}")
+    
+    # Preserve created_at if user already exists
+    if existing:
+        doc['created_at'] = existing.get('created_at', datetime.now(timezone.utc).isoformat())
+        if isinstance(doc['created_at'], datetime):
+            doc['created_at'] = doc['created_at'].isoformat()
+    else:
+        doc['created_at'] = doc['created_at'].isoformat() if isinstance(doc.get('created_at'), datetime) else datetime.now(timezone.utc).isoformat()
     
     # Ensure user_timezone is set (from onboarding request)
     if request.user_timezone:
@@ -1752,7 +1905,24 @@ async def complete_onboarding(request: OnboardingRequest, req: Request):
         # Fallback to schedule timezone if user_timezone not provided
         doc['user_timezone'] = doc.get('schedule', {}).get('timezone', 'UTC')
     
-    await db.users.insert_one(doc)
+    # Activate user after onboarding
+    doc['active'] = True
+    
+    logger.debug(f"User timezone set to: {doc.get('user_timezone')}")
+    logger.debug(f"Schedule frequency: {doc.get('schedule', {}).get('frequency')}")
+    logger.debug(f"Personalities count: {len(doc.get('personalities', []))}")
+    
+    if existing:
+        # Update existing user (created by Clerk sync)
+        await db.users.update_one(
+            {"email": request.email},
+            {"$set": doc}
+        )
+        logger.info(f"✅ Updated user with onboarding data: {request.email}")
+    else:
+        # Create new user
+        await db.users.insert_one(doc)
+        logger.info(f"✅ User created in database: {request.email}")
     
     # Save initial version history
     await version_tracker.save_schedule_version(
@@ -1779,6 +1949,8 @@ async def complete_onboarding(request: OnboardingRequest, req: Request):
     
     # Track onboarding completion
     ip_address = req.client.host if req.client else None
+    logger.info(f"📝 Saving version history for: {request.email}")
+    
     await tracker.log_user_activity(
         action_type="onboarding_completed",
         user_email=request.email,
@@ -1789,12 +1961,17 @@ async def complete_onboarding(request: OnboardingRequest, req: Request):
         ip_address=ip_address
     )
     
-    # Clean up pending login
-    await db.pending_logins.delete_one({"email": request.email})
+    # Note: No pending login cleanup needed - using Clerk authentication only
     
     # Schedule emails for this new user
+    logger.info(f"📅 Scheduling emails for new user: {request.email}")
     await schedule_user_emails()
-    logger.info(f"✅ Onboarding complete + history saved for: {request.email}")
+    
+    onboarding_duration = time.time() - start_time
+    logger.info(f"✅ Onboarding complete for {request.email} in {onboarding_duration:.2f}s")
+    logger.info(f"   - User created")
+    logger.info(f"   - Version history saved")
+    logger.info(f"   - Emails scheduled")
     
     return {"status": "success", "user": profile}
 
@@ -1813,11 +1990,16 @@ async def get_user(email: str):
 
 @api_router.put("/users/{email}")
 async def update_user(email: str, updates: UserProfileUpdate):
+    start_time = time.time()
+    logger.info(f"📝 User update request for: {email}")
+    
     user = await db.users.find_one({"email": email}, {"_id": 0})
     if not user:
+        logger.warning(f"⚠️ Update attempt for non-existent user: {email}")
         raise HTTPException(status_code=404, detail="User not found")
     
     update_data = {k: v for k, v in updates.model_dump().items() if v is not None}
+    logger.debug(f"Fields to update: {list(update_data.keys())}")
     
     if update_data:
         # Save version history BEFORE updating
@@ -1864,20 +2046,33 @@ async def update_user(email: str, updates: UserProfileUpdate):
     
     # Reschedule if schedule was updated
     if 'schedule' in update_data or 'active' in update_data:
+        logger.info(f"📅 Schedule/active changed for {email} - rescheduling emails")
         await schedule_user_emails()
-        logger.info(f"Rescheduled emails for {email}")
+    
+    update_duration = time.time() - start_time
+    logger.info(f"✅ User update completed for {email} in {update_duration:.2f}s")
     
     return updated_user
 
 @api_router.post("/generate-message")
-async def generate_message(request: MessageGenRequest):
+@limiter.limit("10/minute")  # Limit OpenAI API calls
+async def generate_message(message_request: MessageGenRequest, request: FastAPIRequest):
+    start_time = time.time()
+    logger.info(f"💬 Message generation request for: {message_request.email}")
+    logger.debug(f"Message type: {message_request.message_type}, Goal: {message_request.goal_id}")
+    
     message, _, used_fallback, _ = await generate_unique_motivational_message(
-        request.goals, 
-        request.personality,
-        request.user_name,
+        message_request.goals, 
+        message_request.personality,
+        message_request.user_name,
         0,
         []
     )
+    
+    gen_duration = time.time() - start_time
+    logger.info(f"✅ Message generated for {message_request.email} in {gen_duration:.2f}s (fallback: {used_fallback})")
+    logger.debug(f"Message length: {len(message)} characters")
+    
     return MessageGenResponse(message=message, used_fallback=used_fallback)
 
 @api_router.post("/test-schedule/{email}")
@@ -1912,7 +2107,8 @@ async def test_schedule(email: str):
     }
 
 @api_router.post("/send-now/{email}")
-async def send_motivation_now(email: str):
+@limiter.limit("5/minute")  # Limit instant sends
+async def send_motivation_now(email: str, request: FastAPIRequest):
     """Send motivation email immediately"""
     user = await db.users.find_one({"email": email}, {"_id": 0})
     if not user:
@@ -6071,23 +6267,44 @@ async def get_reflections(email: str, limit: int = 50):
 
 @api_router.get("/community/stats")
 async def get_community_stats():
-    """Get anonymous community statistics"""
+    """
+    Get anonymous community statistics.
+    Uses MongoDB aggregation for accurate average streak calculation (10k+ users).
+    """
     total_users = await db.users.count_documents({"active": True})
     total_messages = await db.message_history.count_documents({})
     total_feedback = await db.message_feedback.count_documents({})
     
-    # Get average streak
-    users = await db.users.find({"active": True}, {"streak_count": 1}).to_list(1000)
-    avg_streak = sum(u.get("streak_count", 0) for u in users) / len(users) if users else 0
+    # Get average streak using MongoDB aggregation (accurate for 10k+ users)
+    # This is more efficient and accurate than sampling
+    streak_aggregation = await db.users.aggregate([
+        {"$match": {"active": True}},
+        {"$group": {
+            "_id": None,
+            "avg_streak": {"$avg": "$streak_count"},
+            "total_users": {"$sum": 1}
+        }}
+    ]).to_list(1)
     
-    # Get most popular personalities
-    feedbacks = await db.message_feedback.find({}).to_list(1000)
-    personality_counts = {}
-    for fb in feedbacks:
-        pers = fb.get("personality", {}).get("value", "Unknown")
-        personality_counts[pers] = personality_counts.get(pers, 0) + 1
+    if streak_aggregation and len(streak_aggregation) > 0:
+        avg_streak = streak_aggregation[0].get("avg_streak", 0) or 0
+    else:
+        avg_streak = 0
     
-    popular_personalities = sorted(personality_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    # Get most popular personalities using aggregation (more efficient)
+    personality_aggregation = await db.message_feedback.aggregate([
+        {"$group": {
+            "_id": "$personality.value",
+            "count": {"$sum": 1}
+        }},
+        {"$sort": {"count": -1}},
+        {"$limit": 5}
+    ]).to_list(5)
+    
+    popular_personalities = [
+        (item.get("_id", "Unknown"), item.get("count", 0))
+        for item in personality_aggregation
+    ]
     
     return {
         "total_active_users": total_users,
@@ -6126,29 +6343,48 @@ async def get_message_insights(message_id: str):
 
 @api_router.get("/admin/content-performance", dependencies=[Depends(verify_admin)])
 async def get_content_performance(admin_token: str):
-    """Get content performance analytics"""
-    messages = await db.message_history.find({}).to_list(1000)
-    feedbacks = await db.message_feedback.find({}).to_list(1000)
+    """
+    Get content performance analytics.
+    Uses MongoDB aggregation for efficient processing (10k+ users).
+    """
+    # Use aggregation for personality performance (more efficient)
+    personality_message_counts = await db.message_history.aggregate([
+        {"$group": {
+            "_id": "$personality.value",
+            "total": {"$sum": 1}
+        }}
+    ]).to_list(100)
     
-    # Group by personality
+    personality_feedback_stats = await db.message_feedback.aggregate([
+        {"$group": {
+            "_id": "$personality.value",
+            "avg_rating": {"$avg": "$rating"},
+            "feedback_count": {"$sum": 1},
+            "total_rating": {"$sum": "$rating"}
+        }}
+    ]).to_list(100)
+    
+    # Combine results
     personality_performance = {}
-    for msg in messages:
-        pers = msg.get("personality", {}).get("value", "Unknown") if msg.get("personality") else "Unknown"
+    
+    # Add message counts
+    for item in personality_message_counts:
+        pers = item.get("_id", "Unknown")
+        personality_performance[pers] = {
+            "total": item.get("total", 0),
+            "ratings": [],
+            "avg_rating": 0,
+            "feedback_count": 0
+        }
+    
+    # Add feedback stats
+    for item in personality_feedback_stats:
+        pers = item.get("_id", "Unknown")
         if pers not in personality_performance:
             personality_performance[pers] = {"total": 0, "ratings": []}
-        personality_performance[pers]["total"] += 1
-    
-    # Add ratings
-    for fb in feedbacks:
-        pers = fb.get("personality", {}).get("value", "Unknown") if fb.get("personality") else "Unknown"
-        if pers in personality_performance:
-            personality_performance[pers]["ratings"].append(fb.get("rating", 0))
-    
-    # Calculate averages
-    for pers in personality_performance:
-        ratings = personality_performance[pers]["ratings"]
-        personality_performance[pers]["avg_rating"] = sum(ratings) / len(ratings) if ratings else 0
-        personality_performance[pers]["feedback_count"] = len(ratings)
+        
+        personality_performance[pers]["avg_rating"] = round(item.get("avg_rating", 0) or 0, 2)
+        personality_performance[pers]["feedback_count"] = item.get("feedback_count", 0)
     
     return {"personality_performance": personality_performance}
 
@@ -6296,14 +6532,30 @@ async def skip_next_email(email: str):
 
 # Admin Routes
 @api_router.get("/admin/users", dependencies=[Depends(verify_admin)])
-async def admin_get_all_users():
-    users = await db.users.find({}, {"_id": 0}).to_list(1000)
+async def admin_get_all_users(page: int = 1, limit: int = 50):
+    """
+    Get all users with pagination for scalability (10k+ users).
+    Default: 50 users per page. Use ?page=2&limit=100 for more.
+    """
+    skip = (page - 1) * limit
+    total_users = await db.users.count_documents({})
+    
+    users = await db.users.find({}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
     for user in users:
         if isinstance(user.get('created_at'), str):
             user['created_at'] = datetime.fromisoformat(user['created_at'])
         if isinstance(user.get('last_email_sent'), str):
             user['last_email_sent'] = datetime.fromisoformat(user['last_email_sent'])
-    return {"users": users, "total": len(users)}
+    
+    total_pages = (total_users + limit - 1) // limit
+    
+    return {
+        "users": users, 
+        "total": total_users,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages
+    }
 
 @api_router.get("/admin/email-logs", dependencies=[Depends(verify_admin)])
 async def admin_get_email_logs(limit: int = 100):
@@ -6329,15 +6581,33 @@ async def admin_get_stats():
     total_messages = await db.message_history.count_documents({})
     total_feedback = await db.message_feedback.count_documents({})
     
-    # Calculate average streak
-    users = await db.users.find({}, {"streak_count": 1, "_id": 0}).to_list(1000)
-    streaks = [u.get('streak_count', 0) for u in users]
-    avg_streak = sum(streaks) / len(streaks) if streaks else 0
+    # Calculate average streak using MongoDB aggregation (accurate for 10k+ users)
+    streak_aggregation = await db.users.aggregate([
+        {"$group": {
+            "_id": None,
+            "avg_streak": {"$avg": "$streak_count"},
+            "total_users": {"$sum": 1}
+        }}
+    ]).to_list(1)
     
-    # Get feedback ratings
-    feedbacks = await db.message_feedback.find({}, {"rating": 1, "_id": 0}).to_list(10000)
-    ratings = [f.get('rating', 0) for f in feedbacks]
-    avg_rating = sum(ratings) / len(ratings) if ratings else 0
+    if streak_aggregation and len(streak_aggregation) > 0:
+        avg_streak = streak_aggregation[0].get("avg_streak", 0) or 0
+    else:
+        avg_streak = 0
+    
+    # Get feedback ratings using aggregation (accurate for 10k+ users)
+    rating_aggregation = await db.message_feedback.aggregate([
+        {"$group": {
+            "_id": None,
+            "avg_rating": {"$avg": "$rating"},
+            "total_feedback": {"$sum": 1}
+        }}
+    ]).to_list(1)
+    
+    if rating_aggregation and len(rating_aggregation) > 0:
+        avg_rating = rating_aggregation[0].get("avg_rating", 0) or 0
+    else:
+        avg_rating = 0
     
     return {
         "total_users": total_users,
@@ -6598,59 +6868,401 @@ async def admin_get_database_health():
         "total_documents": sum(collections.values())
     }
 
+@api_router.get("/admin/logs/activity", dependencies=[Depends(verify_admin)])
+async def admin_get_activity_logs(
+    page: int = 1,
+    limit: int = 100,
+    user_email: Optional[str] = None,
+    action_type: Optional[str] = None,
+    action_category: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+):
+    """
+    Get activity logs with filtering and pagination.
+    Supports filtering by user, action type, category, and date range.
+    """
+    skip = (page - 1) * limit
+    query = {}
+    
+    if user_email:
+        query["user_email"] = user_email
+    if action_type:
+        query["action_type"] = action_type
+    if action_category:
+        query["action_category"] = action_category
+    
+    # Date range filtering
+    if start_date or end_date:
+        date_query = {}
+        if start_date:
+            try:
+                date_query["$gte"] = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            except:
+                date_query["$gte"] = datetime.fromisoformat(start_date)
+        if end_date:
+            try:
+                date_query["$lte"] = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            except:
+                date_query["$lte"] = datetime.fromisoformat(end_date)
+        query["timestamp"] = date_query
+    
+    total = await db.activity_logs.count_documents(query)
+    logs = await db.activity_logs.find(
+        query,
+        {"_id": 0}
+    ).sort("timestamp", -1).skip(skip).limit(limit).to_list(limit)
+    
+    # Convert datetime to ISO strings
+    for log in logs:
+        if isinstance(log.get('timestamp'), datetime):
+            log['timestamp'] = log['timestamp'].isoformat()
+    
+    total_pages = (total + limit - 1) // limit
+    
+    return {
+        "logs": logs,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages
+    }
+
+@api_router.get("/admin/logs/system-events", dependencies=[Depends(verify_admin)])
+async def admin_get_system_events(
+    page: int = 1,
+    limit: int = 100,
+    event_type: Optional[str] = None,
+    event_category: Optional[str] = None,
+    status: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+):
+    """
+    Get system events with filtering and pagination.
+    """
+    skip = (page - 1) * limit
+    query = {}
+    
+    if event_type:
+        query["event_type"] = event_type
+    if event_category:
+        query["event_category"] = event_category
+    if status:
+        query["status"] = status
+    
+    # Date range filtering
+    if start_date or end_date:
+        date_query = {}
+        if start_date:
+            try:
+                date_query["$gte"] = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            except:
+                date_query["$gte"] = datetime.fromisoformat(start_date)
+        if end_date:
+            try:
+                date_query["$lte"] = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            except:
+                date_query["$lte"] = datetime.fromisoformat(end_date)
+        query["timestamp"] = date_query
+    
+    total = await db.system_events.count_documents(query)
+    events = await db.system_events.find(
+        query,
+        {"_id": 0}
+    ).sort("timestamp", -1).skip(skip).limit(limit).to_list(limit)
+    
+    # Convert datetime to ISO strings
+    for event in events:
+        if isinstance(event.get('timestamp'), datetime):
+            event['timestamp'] = event['timestamp'].isoformat()
+    
+    total_pages = (total + limit - 1) // limit
+    
+    return {
+        "events": events,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages
+    }
+
+@api_router.get("/admin/logs/api-analytics", dependencies=[Depends(verify_admin)])
+async def admin_get_api_analytics(
+    page: int = 1,
+    limit: int = 100,
+    endpoint: Optional[str] = None,
+    method: Optional[str] = None,
+    status_code: Optional[int] = None,
+    user_email: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+):
+    """
+    Get API analytics with filtering and pagination.
+    """
+    skip = (page - 1) * limit
+    query = {}
+    
+    if endpoint:
+        query["endpoint"] = {"$regex": endpoint, "$options": "i"}
+    if method:
+        query["method"] = method
+    if status_code:
+        query["status_code"] = status_code
+    if user_email:
+        query["user_email"] = user_email
+    
+    # Date range filtering
+    if start_date or end_date:
+        date_query = {}
+        if start_date:
+            try:
+                date_query["$gte"] = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            except:
+                date_query["$gte"] = datetime.fromisoformat(start_date)
+        if end_date:
+            try:
+                date_query["$lte"] = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            except:
+                date_query["$lte"] = datetime.fromisoformat(end_date)
+        query["timestamp"] = date_query
+    
+    total = await db.api_analytics.count_documents(query)
+    analytics = await db.api_analytics.find(
+        query,
+        {"_id": 0}
+    ).sort("timestamp", -1).skip(skip).limit(limit).to_list(limit)
+    
+    # Convert datetime to ISO strings
+    for item in analytics:
+        if isinstance(item.get('timestamp'), datetime):
+            item['timestamp'] = item['timestamp'].isoformat()
+    
+    total_pages = (total + limit - 1) // limit
+    
+    return {
+        "analytics": analytics,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages
+    }
+
+@api_router.get("/admin/logs/unified", dependencies=[Depends(verify_admin)])
+async def admin_get_unified_logs(
+    page: int = 1,
+    limit: int = 100,
+    log_type: Optional[str] = None,  # "activity", "system", "api", "all"
+    user_email: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+):
+    """
+    Get unified logs from all sources (activity, system events, API analytics).
+    Combines all log types into a single timeline.
+    """
+    skip = (page - 1) * limit
+    all_logs = []
+    
+    # Build date query
+    date_query = {}
+    if start_date:
+        try:
+            date_query["$gte"] = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        except:
+            date_query["$gte"] = datetime.fromisoformat(start_date)
+    if end_date:
+        try:
+            date_query["$lte"] = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        except:
+            date_query["$lte"] = datetime.fromisoformat(end_date)
+    
+    # Fetch activity logs
+    if log_type in [None, "all", "activity"]:
+        activity_query = {}
+        if user_email:
+            activity_query["user_email"] = user_email
+        if date_query:
+            activity_query["timestamp"] = date_query
+        
+        activity_logs = await db.activity_logs.find(
+            activity_query,
+            {"_id": 0}
+        ).sort("timestamp", -1).limit(limit * 2).to_list(limit * 2)
+        
+        for log in activity_logs:
+            log['log_type'] = 'activity'
+            log['display_time'] = log.get('timestamp')
+            if isinstance(log.get('timestamp'), datetime):
+                log['timestamp'] = log['timestamp'].isoformat()
+                log['display_time'] = log['timestamp']
+            all_logs.append(log)
+    
+    # Fetch system events
+    if log_type in [None, "all", "system"]:
+        system_query = {}
+        if date_query:
+            system_query["timestamp"] = date_query
+        
+        system_events = await db.system_events.find(
+            system_query,
+            {"_id": 0}
+        ).sort("timestamp", -1).limit(limit * 2).to_list(limit * 2)
+        
+        for event in system_events:
+            event['log_type'] = 'system'
+            event['display_time'] = event.get('timestamp')
+            if isinstance(event.get('timestamp'), datetime):
+                event['timestamp'] = event['timestamp'].isoformat()
+                event['display_time'] = event['timestamp']
+            all_logs.append(event)
+    
+    # Fetch API analytics
+    if log_type in [None, "all", "api"]:
+        api_query = {}
+        if user_email:
+            api_query["user_email"] = user_email
+        if date_query:
+            api_query["timestamp"] = date_query
+        
+        api_analytics = await db.api_analytics.find(
+            api_query,
+            {"_id": 0}
+        ).sort("timestamp", -1).limit(limit * 2).to_list(limit * 2)
+        
+        for item in api_analytics:
+            item['log_type'] = 'api'
+            item['display_time'] = item.get('timestamp')
+            if isinstance(item.get('timestamp'), datetime):
+                item['timestamp'] = item['timestamp'].isoformat()
+                item['display_time'] = item['timestamp']
+            all_logs.append(item)
+    
+    # Sort by timestamp (newest first)
+    all_logs.sort(key=lambda x: x.get('display_time', ''), reverse=True)
+    
+    # Apply search filter if provided
+    if search:
+        search_lower = search.lower()
+        all_logs = [
+            log for log in all_logs
+            if search_lower in str(log).lower() or
+               search_lower in str(log.get('user_email', '')).lower() or
+               search_lower in str(log.get('action_type', '')).lower() or
+               search_lower in str(log.get('event_type', '')).lower() or
+               search_lower in str(log.get('endpoint', '')).lower()
+        ]
+    
+    total = len(all_logs)
+    
+    # Paginate
+    paginated_logs = all_logs[skip:skip + limit]
+    total_pages = (total + limit - 1) // limit
+    
+    return {
+        "logs": paginated_logs,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages
+    }
+
 class BroadcastRequest(BaseModel):
     message: str
     subject: Optional[str] = None
 
 @api_router.post("/admin/broadcast", dependencies=[Depends(verify_admin)])
 async def admin_broadcast_message(request: BroadcastRequest):
-    """Send a message to all active users"""
+    """
+    Send a message to all active users.
+    Uses pagination to handle 10k+ users efficiently.
+    Email queue automatically limits concurrent sends.
+    """
+    broadcast_start = time.time()
     message = request.message
     subject = request.subject
-    active_users = await db.users.find({"active": True}, {"email": 1, "_id": 0}).to_list(1000)
-    emails = [u["email"] for u in active_users]
+    broadcast_subject = subject or "Important Update from Tend"
+    
+    logger.info(f"📢 Broadcast message initiated: '{broadcast_subject}'")
+    logger.debug(f"Message length: {len(message)} characters")
     
     success_count = 0
     failed_count = 0
-    broadcast_subject = subject or "Important Update from InboxInspire"
+    batch_size = 100  # Process in batches
+    skip = 0
     
-    for email in emails:
-        try:
-            success, error = await send_email(
-                to_email=email,
-                subject=broadcast_subject,
-                html_content=message
-            )
-            if success:
-                success_count += 1
-                await record_email_log(
-                    email=email,
+    while True:
+        # Fetch batch of users
+        active_users = await db.users.find(
+            {"active": True}, 
+            {"email": 1, "_id": 0}
+        ).skip(skip).limit(batch_size).to_list(batch_size)
+        
+        if not active_users:
+            break
+        
+        emails = [u["email"] for u in active_users]
+        
+        # Send emails in batch (email queue semaphore handles rate limiting)
+        for email in emails:
+            try:
+                success, error = await send_email(
+                    to_email=email,
                     subject=broadcast_subject,
-                    status="success",
-                    sent_dt=datetime.now(timezone.utc)
+                    html_content=message
                 )
-            else:
+                if success:
+                    success_count += 1
+                    await record_email_log(
+                        email=email,
+                        subject=broadcast_subject,
+                        status="success",
+                        sent_dt=datetime.now(timezone.utc)
+                    )
+                else:
+                    failed_count += 1
+                    await record_email_log(
+                        email=email,
+                        subject=broadcast_subject,
+                        status="failed",
+                        sent_dt=datetime.now(timezone.utc),
+                        error_message=error
+                    )
+            except Exception as e:
                 failed_count += 1
-                await record_email_log(
-                    email=email,
-                    subject=broadcast_subject,
-                    status="failed",
-                    sent_dt=datetime.now(timezone.utc),
-                    error_message=error
-                )
-        except Exception as e:
-            failed_count += 1
-            logger.error(f"Failed to send broadcast to {email}: {str(e)}")
+                logger.error(f"Failed to send broadcast to {email}: {str(e)}")
+        
+        skip += batch_size
+        total_processed = success_count + failed_count
+        
+        # Log progress every 1000 users
+        if total_processed % 1000 == 0 and total_processed > 0:
+            logger.info(f"📊 Broadcast progress: {total_processed} users processed ({success_count} success, {failed_count} failed)...")
+    
+    broadcast_duration = time.time() - broadcast_start
+    total_users = success_count + failed_count
+    
+    logger.info(f"✅ Broadcast completed in {broadcast_duration:.2f}s")
+    logger.info(f"   - Total users: {total_users}")
+    logger.info(f"   - Success: {success_count} ({success_count/total_users*100:.1f}%)" if total_users > 0 else "")
+    logger.info(f"   - Failed: {failed_count} ({failed_count/total_users*100:.1f}%)" if total_users > 0 else "")
     
     await tracker.log_admin_activity(
         action_type="broadcast_sent",
         admin_email="admin",
-        details={"total_users": len(emails), "success": success_count, "failed": failed_count}
+        details={
+            "total_users": total_users, 
+            "success": success_count, 
+            "failed": failed_count,
+            "duration_seconds": round(broadcast_duration, 2)
+        }
     )
     
     return {
         "status": "completed",
-        "total_users": len(emails),
+        "total_users": total_users,
         "success": success_count,
         "failed": failed_count
     }
@@ -6706,8 +7318,11 @@ async def admin_get_analytics_trends(days: int = 30):
     }
 
 @api_router.get("/admin/search", dependencies=[Depends(verify_admin)])
-async def admin_global_search(query: str, limit: int = 50):
-    """Global search across all collections"""
+async def admin_global_search(query: str, limit: int = 50, page: int = 1):
+    """
+    Global search across all collections with pagination.
+    Supports 10k+ users with efficient pagination.
+    """
     results = {
         "users": [],
         "messages": [],
@@ -6715,51 +7330,102 @@ async def admin_global_search(query: str, limit: int = 50):
         "logs": []
     }
     
-    # Search users
+    # Calculate skip for pagination
+    skip = (page - 1) * limit
+    
+    # Search users with pagination
     users = await db.users.find({
         "$or": [
             {"email": {"$regex": query, "$options": "i"}},
             {"name": {"$regex": query, "$options": "i"}},
             {"goals": {"$regex": query, "$options": "i"}}
         ]
-    }, {"_id": 0}).limit(limit).to_list(limit)
+    }, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
     results["users"] = users
     
-    # Search messages
+    # Get total count for users
+    total_users = await db.users.count_documents({
+        "$or": [
+            {"email": {"$regex": query, "$options": "i"}},
+            {"name": {"$regex": query, "$options": "i"}},
+            {"goals": {"$regex": query, "$options": "i"}}
+        ]
+    })
+    
+    # Search messages with pagination
     messages = await db.message_history.find({
         "$or": [
             {"email": {"$regex": query, "$options": "i"}},
             {"message": {"$regex": query, "$options": "i"}},
             {"subject": {"$regex": query, "$options": "i"}}
         ]
-    }, {"_id": 0}).limit(limit).to_list(limit)
+    }, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
     results["messages"] = messages
     
-    # Search feedback
+    # Get total count for messages
+    total_messages = await db.message_history.count_documents({
+        "$or": [
+            {"email": {"$regex": query, "$options": "i"}},
+            {"message": {"$regex": query, "$options": "i"}},
+            {"subject": {"$regex": query, "$options": "i"}}
+        ]
+    })
+    
+    # Search feedback with pagination
     feedbacks = await db.message_feedback.find({
         "$or": [
             {"email": {"$regex": query, "$options": "i"}},
             {"feedback_text": {"$regex": query, "$options": "i"}}
         ]
-    }, {"_id": 0}).limit(limit).to_list(limit)
+    }, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
     results["feedback"] = feedbacks
     
-    # Search email logs
+    # Get total count for feedback
+    total_feedback = await db.message_feedback.count_documents({
+        "$or": [
+            {"email": {"$regex": query, "$options": "i"}},
+            {"feedback_text": {"$regex": query, "$options": "i"}}
+        ]
+    })
+    
+    # Search email logs with pagination
     logs = await db.email_logs.find({
         "$or": [
             {"email": {"$regex": query, "$options": "i"}},
             {"subject": {"$regex": query, "$options": "i"}},
             {"error_message": {"$regex": query, "$options": "i"}}
         ]
-    }, {"_id": 0}).limit(limit).to_list(limit)
+    }, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
     results["logs"] = logs
     
+    # Get total count for logs
+    total_logs = await db.email_logs.count_documents({
+        "$or": [
+            {"email": {"$regex": query, "$options": "i"}},
+            {"subject": {"$regex": query, "$options": "i"}},
+            {"error_message": {"$regex": query, "$options": "i"}}
+        ]
+    })
+    
     total_results = len(results["users"]) + len(results["messages"]) + len(results["feedback"]) + len(results["logs"])
+    total_all = total_users + total_messages + total_feedback + total_logs
     
     return {
         "query": query,
         "results": results,
-        "total": total_results
+        "total": total_results,
+        "pagination": {
+            "page": page,
+            "limit": limit,
+            "total": total_all,
+            "total_pages": (total_all + limit - 1) // limit if limit > 0 else 1
+        },
+        "counts": {
+            "users": {"returned": len(results["users"]), "total": total_users},
+            "messages": {"returned": len(results["messages"]), "total": total_messages},
+            "feedback": {"returned": len(results["feedback"]), "total": total_feedback},
+            "logs": {"returned": len(results["logs"]), "total": total_logs}
+        }
     }
 
 @api_router.get("/admin/message-history", dependencies=[Depends(verify_admin)])
@@ -7063,9 +7729,14 @@ async def admin_get_user_segments(
     max_streak: Optional[int] = None,
     min_rating: Optional[float] = None,
     personality: Optional[str] = None,
-    active_only: bool = True
+    active_only: bool = True,
+    page: int = 1,
+    limit: int = 100
 ):
-    """Get segmented users based on various criteria"""
+    """
+    Get segmented users based on various criteria with pagination.
+    Supports 10k+ users efficiently.
+    """
     query = {}
     
     if active_only:
@@ -7081,7 +7752,11 @@ async def admin_get_user_segments(
     if personality:
         query["personalities.value"] = personality
     
-    users = await db.users.find(query, {"_id": 0}).to_list(1000)
+    # Use pagination for scalability
+    skip = (page - 1) * limit
+    total_users = await db.users.count_documents(query)
+    
+    users = await db.users.find(query, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
     
     # Filter by engagement level
     if engagement_level:
@@ -7123,8 +7798,15 @@ async def admin_get_user_segments(
             user["avg_rating"] = None
     
     return {
-        "total": len(users),
+        "total": total_users,
+        "returned": len(users),
         "users": users,
+        "pagination": {
+            "page": page,
+            "limit": limit,
+            "total": total_users,
+            "total_pages": (total_users + limit - 1) // limit if limit > 0 else 1
+        },
         "filters": {
             "engagement_level": engagement_level,
             "min_streak": min_streak,
@@ -7465,15 +8147,19 @@ async def update_tracking_session(
     await tracker.update_session(session_id, actions=actions, pages=pages)
     return {"status": "updated", "session_id": session_id}
 
-# Activity Tracking Middleware
+# Activity Tracking Middleware with Enhanced Logging
 @app.middleware("http")
 async def track_api_calls(request: Request, call_next):
-    """Middleware to track all API calls"""
+    """Middleware to track all API calls with comprehensive logging"""
     start_time = time.time()
     
     # Get client info
     client_ip = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
+    
+    # Log API request
+    if request.url.path.startswith("/api"):
+        logger.debug(f"🌐 API Request: {request.method} {request.url.path} (IP: {client_ip})")
     
     try:
         response = await call_next(request)
@@ -7483,6 +8169,16 @@ async def track_api_calls(request: Request, call_next):
         
         # Track API call
         if request.url.path.startswith("/api"):
+            # Log slow requests
+            if response_time_ms > 1000:
+                logger.warning(f"⚠️ Slow API call: {request.method} {request.url.path} took {response_time_ms}ms")
+            elif response_time_ms > 500:
+                logger.info(f"⏱️ API call: {request.method} {request.url.path} took {response_time_ms}ms")
+            
+            # Log errors
+            if response.status_code >= 400:
+                logger.warning(f"⚠️ API Error: {request.method} {request.url.path} returned {response.status_code}")
+            
             await tracker.log_api_call(
                 endpoint=request.url.path,
                 method=request.method,
@@ -7494,6 +8190,9 @@ async def track_api_calls(request: Request, call_next):
         return response
     except Exception as e:
         response_time_ms = int((time.time() - start_time) * 1000)
+        
+        # Log exception
+        logger.error(f"❌ API Exception: {request.method} {request.url.path} failed after {response_time_ms}ms: {str(e)}", exc_info=True)
         
         # Track failed API call
         if request.url.path.startswith("/api"):
@@ -7511,6 +8210,46 @@ async def track_api_calls(request: Request, call_next):
 # Include the router in the main app
 app.include_router(api_router)
 
+# Security Headers Middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses"""
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Only add HSTS if HTTPS is enabled (check via environment)
+        if os.getenv("HTTPS_ENABLED", "false").lower() == "true":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+# Request Size Limits Middleware
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    """Limit request body size to prevent memory exhaustion"""
+    MAX_REQUEST_SIZE = 1_000_000  # 1MB
+    
+    async def dispatch(self, request: StarletteRequest, call_next):
+        if request.method in ["POST", "PUT", "PATCH"]:
+            content_length = request.headers.get("content-length")
+            if content_length:
+                try:
+                    size = int(content_length)
+                    if size > self.MAX_REQUEST_SIZE:
+                        return JSONResponse(
+                            status_code=413,
+                            content={
+                                "detail": f"Request body too large. Maximum size is {self.MAX_REQUEST_SIZE / 1_000_000}MB"
+                            }
+                        )
+                except ValueError:
+                    pass  # Invalid content-length, let it proceed
+        
+        return await call_next(request)
+
+# Add middlewares (order matters - security headers last, CORS after)
+app.add_middleware(RequestSizeLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -7519,175 +8258,237 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configure logging
+# Configure comprehensive logging for debugging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
 )
 logger = logging.getLogger(__name__)
 
+# Set log levels for different components
+logger.setLevel(logging.INFO)
+
 async def create_email_job(user_email: str):
     """Scheduled job executed by AsyncIOScheduler within the main event loop."""
+    job_start = time.time()
+    logger.info(f"⏰ Scheduler job started for: {user_email}")
+    
     try:
         await send_motivation_to_user(user_email)
+        
+        job_duration = time.time() - job_start
+        logger.info(f"✅ Scheduler job completed for {user_email} in {job_duration:.2f}s")
         
         await tracker.log_system_event(
             event_type="scheduled_email_sent",
             event_category="scheduler",
-            details={"user_email": user_email},
+            details={"user_email": user_email, "duration_seconds": round(job_duration, 2)},
             status="success"
         )
     except Exception as e:
-        logger.error(f"Error in email job for {user_email}: {str(e)}")
+        job_duration = time.time() - job_start
+        logger.error(f"❌ Error in scheduler job for {user_email} after {job_duration:.2f}s: {str(e)}", exc_info=True)
+        
+        await tracker.log_system_event(
+            event_type="scheduled_email_failed",
+            event_category="scheduler",
+            details={"user_email": user_email, "error": str(e), "duration_seconds": round(job_duration, 2)},
+            status="error"
+        )
 
 async def schedule_user_emails():
-    """Schedule emails for all active users based on their preferences"""
+    """
+    Schedule emails for all active users based on their preferences.
+    Uses pagination to handle 10k+ users efficiently.
+    Optimized job lookup to avoid O(n²) complexity.
+    """
+    schedule_start = time.time()
+    logger.info("🔄 Starting email scheduling for all active users...")
+    
     try:
-        users = await db.users.find({"active": True}, {"_id": 0}).to_list(1000)
+        batch_size = 100  # Process users in batches
+        skip = 0
+        total_scheduled = 0
         
-        for user_data in users:
-            try:
-                schedule = user_data.get('schedule', {})
-                if schedule.get('paused', False):
-                    continue
-                
-                email = user_data['email']
-                times = schedule.get('times', ['09:00'])
-                frequency = schedule.get('frequency', 'daily')
-                user_timezone = schedule.get('timezone', 'UTC')
-                
-                # Parse time
-                time_parts = times[0].split(':')
-                hour = int(time_parts[0])
-                minute = int(time_parts[1])
-                
-                # Get timezone object
+        # Get all existing job IDs once (avoid O(n²) lookup)
+        existing_jobs = scheduler.get_jobs()
+        existing_job_ids = {job.id for job in existing_jobs}
+        logger.info(f"📋 Found {len(existing_job_ids)} existing scheduled jobs")
+        
+        while True:
+            # Fetch batch of users
+            users = await db.users.find(
+                {"active": True}, 
+                {"_id": 0}
+            ).skip(skip).limit(batch_size).to_list(batch_size)
+            
+            if not users:
+                break
+            
+            for user_data in users:
                 try:
-                    tz = pytz.timezone(user_timezone)
-                except:
-                    tz = pytz.UTC
-                    logger.warning(f"Invalid timezone {user_timezone} for {email}, using UTC")
-                
-                # Create job ID
-                job_id = f"user_{email.replace('@', '_at_').replace('.', '_')}"
-                
-                # Remove all existing jobs for this user (handles multiple times/days/dates)
-                try:
-                    # Remove main job
-                    scheduler.remove_job(job_id)
-                except:
-                    pass
-                # Remove any sub-jobs (for multiple times/days/dates)
-                for existing_job in scheduler.get_jobs():
-                    if existing_job.id.startswith(job_id + "_"):
+                    schedule = user_data.get('schedule', {})
+                    if schedule.get('paused', False):
+                        continue
+                    
+                    email = user_data['email']
+                    times = schedule.get('times', ['09:00'])
+                    frequency = schedule.get('frequency', 'daily')
+                    user_timezone = schedule.get('timezone', 'UTC')
+                    
+                    # Parse time
+                    time_parts = times[0].split(':')
+                    hour = int(time_parts[0])
+                    minute = int(time_parts[1])
+                    
+                    # Get timezone object
+                    try:
+                        tz = pytz.timezone(user_timezone)
+                    except:
+                        tz = pytz.UTC
+                        logger.warning(f"Invalid timezone {user_timezone} for {email}, using UTC")
+                    
+                    # Create job ID
+                    job_id = f"user_{email.replace('@', '_at_').replace('.', '_')}"
+                    
+                    # Efficiently remove existing jobs for this user
+                    # Check against pre-fetched job IDs instead of iterating all jobs
+                    jobs_to_remove = []
+                    if job_id in existing_job_ids:
+                        jobs_to_remove.append(job_id)
+                    
+                    # Check for sub-jobs (for multiple times/days/dates)
+                    for existing_job_id in existing_job_ids:
+                        if existing_job_id.startswith(job_id + "_"):
+                            jobs_to_remove.append(existing_job_id)
+                    
+                    # Remove jobs
+                    for job_id_to_remove in jobs_to_remove:
                         try:
-                            scheduler.remove_job(existing_job.id)
+                            scheduler.remove_job(job_id_to_remove)
+                            existing_job_ids.discard(job_id_to_remove)
                         except:
                             pass
-                
-                # Add new job based on frequency with timezone
-                # FIXED: Now properly executes async function from scheduler
-                if frequency == 'daily':
-                    # Handle multiple times per day
-                    for time_idx, time_str in enumerate(times):
-                        time_parts = time_str.split(':')
-                        t_hour = int(time_parts[0])
-                        t_minute = int(time_parts[1])
-                        job_id_with_time = f"{job_id}_time_{time_idx}" if len(times) > 1 else job_id
-                        scheduler.add_job(
-                            create_email_job,
-                            CronTrigger(hour=t_hour, minute=t_minute, timezone=tz),
-                            args=[email],
-                            id=job_id_with_time,
-                            replace_existing=True
-                        )
-                elif frequency == 'weekly':
-                    # Use custom_days if specified, otherwise default to Monday
-                    custom_days = schedule.get('custom_days', [])
-                    if custom_days:
-                        # Map day names to cron day_of_week (0=Monday, 6=Sunday)
-                        day_map = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 
-                                  'friday': 4, 'saturday': 5, 'sunday': 6}
-                        for day_name in custom_days:
-                            day_num = day_map.get(day_name.lower(), 0)
-                            job_id_with_day = f"{job_id}_day_{day_num}" if len(custom_days) > 1 else job_id
-                            scheduler.add_job(
-                                create_email_job,
-                                CronTrigger(day_of_week=day_num, hour=hour, minute=minute, timezone=tz),
-                                args=[email],
-                                id=job_id_with_day,
-                                replace_existing=True
-                            )
-                    else:
-                        # Default to Monday
-                        scheduler.add_job(
-                            create_email_job,
-                            CronTrigger(day_of_week=0, hour=hour, minute=minute, timezone=tz),
-                            args=[email],
-                            id=job_id,
-                            replace_existing=True
-                        )
-                elif frequency == 'monthly':
-                    # Use monthly_dates if specified, otherwise default to 1st
-                    monthly_dates = schedule.get('monthly_dates', [])
-                    valid_dates = []
-                    if monthly_dates:
-                        for date_str in monthly_dates:
-                            try:
-                                day_of_month = int(date_str)
-                                if 1 <= day_of_month <= 31:
-                                    valid_dates.append(day_of_month)
-                            except (ValueError, TypeError):
-                                logger.warning(f"Invalid monthly date {date_str} for {email}, skipping")
                     
-                    if valid_dates:
-                        for day_of_month in valid_dates:
-                            job_id_with_date = f"{job_id}_date_{day_of_month}" if len(valid_dates) > 1 else job_id
+                    # Add new job based on frequency with timezone
+                    # FIXED: Now properly executes async function from scheduler
+                    if frequency == 'daily':
+                        # Handle multiple times per day
+                        for time_idx, time_str in enumerate(times):
+                            time_parts = time_str.split(':')
+                            t_hour = int(time_parts[0])
+                            t_minute = int(time_parts[1])
+                            job_id_with_time = f"{job_id}_time_{time_idx}" if len(times) > 1 else job_id
                             scheduler.add_job(
                                 create_email_job,
-                                CronTrigger(day=day_of_month, hour=hour, minute=minute, timezone=tz),
+                                CronTrigger(hour=t_hour, minute=t_minute, timezone=tz),
                                 args=[email],
-                                id=job_id_with_date,
+                                id=job_id_with_time,
                                 replace_existing=True
                             )
-                    else:
-                        # Default to 1st of month if no valid dates
+                    elif frequency == 'weekly':
+                        # Use custom_days if specified, otherwise default to Monday
+                        custom_days = schedule.get('custom_days', [])
+                        if custom_days:
+                            # Map day names to cron day_of_week (0=Monday, 6=Sunday)
+                            day_map = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 
+                                      'friday': 4, 'saturday': 5, 'sunday': 6}
+                            for day_name in custom_days:
+                                day_num = day_map.get(day_name.lower(), 0)
+                                job_id_with_day = f"{job_id}_day_{day_num}" if len(custom_days) > 1 else job_id
+                                scheduler.add_job(
+                                    create_email_job,
+                                    CronTrigger(day_of_week=day_num, hour=hour, minute=minute, timezone=tz),
+                                    args=[email],
+                                    id=job_id_with_day,
+                                    replace_existing=True
+                                )
+                        else:
+                            # Default to Monday
+                            scheduler.add_job(
+                                create_email_job,
+                                CronTrigger(day_of_week=0, hour=hour, minute=minute, timezone=tz),
+                                args=[email],
+                                id=job_id,
+                                replace_existing=True
+                            )
+                    elif frequency == 'monthly':
+                        # Use monthly_dates if specified, otherwise default to 1st
+                        monthly_dates = schedule.get('monthly_dates', [])
+                        valid_dates = []
+                        if monthly_dates:
+                            for date_str in monthly_dates:
+                                try:
+                                    day_of_month = int(date_str)
+                                    if 1 <= day_of_month <= 31:
+                                        valid_dates.append(day_of_month)
+                                except (ValueError, TypeError):
+                                    logger.warning(f"Invalid monthly date {date_str} for {email}, skipping")
+                        
+                        if valid_dates:
+                            for day_of_month in valid_dates:
+                                job_id_with_date = f"{job_id}_date_{day_of_month}" if len(valid_dates) > 1 else job_id
+                                scheduler.add_job(
+                                    create_email_job,
+                                    CronTrigger(day=day_of_month, hour=hour, minute=minute, timezone=tz),
+                                    args=[email],
+                                    id=job_id_with_date,
+                                    replace_existing=True
+                                )
+                        else:
+                            # Default to 1st of month if no valid dates
+                            scheduler.add_job(
+                                create_email_job,
+                                CronTrigger(day=1, hour=hour, minute=minute, timezone=tz),
+                                args=[email],
+                                id=job_id,
+                                replace_existing=True
+                            )
+                    elif frequency == 'custom':
+                        # Custom interval: every N days
+                        interval = schedule.get('custom_interval', 1)
+                        if interval < 1:
+                            interval = 1
+                        # Use IntervalTrigger for custom intervals
                         scheduler.add_job(
                             create_email_job,
-                            CronTrigger(day=1, hour=hour, minute=minute, timezone=tz),
+                            IntervalTrigger(days=interval, start_date=datetime.now(tz).replace(hour=hour, minute=minute, second=0)),
                             args=[email],
                             id=job_id,
                             replace_existing=True
                         )
-                elif frequency == 'custom':
-                    # Custom interval: every N days
-                    interval = schedule.get('custom_interval', 1)
-                    if interval < 1:
-                        interval = 1
-                    # Use IntervalTrigger for custom intervals
-                    scheduler.add_job(
-                        create_email_job,
-                        IntervalTrigger(days=interval, start_date=datetime.now(tz).replace(hour=hour, minute=minute, second=0)),
-                        args=[email],
-                        id=job_id,
-                        replace_existing=True
+                    
+                    logger.info(f"✅ Scheduled emails for {email} at {hour}:{minute:02d} {user_timezone} ({frequency})")
+                    
+                    # Save schedule version history
+                    await version_tracker.save_schedule_version(
+                        user_email=email,
+                        schedule_data=schedule,
+                        changed_by="system",
+                        change_reason="Schedule initialization"
                     )
-                
-                logger.info(f"✅ Scheduled emails for {email} at {hour}:{minute:02d} {user_timezone} ({frequency})")
-                
-                # Save schedule version history
-                await version_tracker.save_schedule_version(
-                    user_email=email,
-                    schedule_data=schedule,
-                    changed_by="system",
-                    change_reason="Schedule initialization"
-                )
-                
-            except Exception as e:
-                logger.error(f"Error scheduling for {user_data.get('email', 'unknown')}: {str(e)}")
+                    
+                    total_scheduled += 1
+                    
+                except Exception as e:
+                    logger.error(f"Error scheduling for {user_data.get('email', 'unknown')}: {str(e)}")
+            
+            skip += batch_size
+            
+            # Log progress every 1000 users
+            if total_scheduled % 1000 == 0 and total_scheduled > 0:
+                logger.info(f"📊 Scheduled {total_scheduled} users so far...")
+        
+        schedule_duration = time.time() - schedule_start
+        logger.info(f"✅ Completed scheduling emails for {total_scheduled} users in {schedule_duration:.2f}s")
+        logger.info(f"📊 Average: {total_scheduled/schedule_duration:.1f} users/second" if schedule_duration > 0 else "")
     
     except Exception as e:
-        logger.error(f"Error in schedule_user_emails: {str(e)}")
+        schedule_duration = time.time() - schedule_start
+        logger.error(f"❌ Error in schedule_user_emails after {schedule_duration:.2f}s: {str(e)}", exc_info=True)
 
 # ============================================================================
 # VERSION HISTORY & DATA PRESERVATION ENDPOINTS
@@ -7946,14 +8747,39 @@ async def admin_initialize_achievements():
 
 @api_router.post("/admin/achievements/recalculate-streaks", dependencies=[Depends(verify_admin)])
 async def admin_recalculate_streaks(email: Optional[str] = None):
-    """Recalculate streaks for all users or a specific user based on message history"""
+    """
+    Recalculate streaks for all users or a specific user based on message history.
+    Uses pagination to handle 10k+ users efficiently.
+    """
     try:
         if email:
             users = [await db.users.find_one({"email": email}, {"_id": 0})]
             if not users[0]:
                 raise HTTPException(status_code=404, detail="User not found")
         else:
-            users = await db.users.find({"active": True}, {"_id": 0, "email": 1, "streak_count": 1}).to_list(1000)
+            # Use pagination for scalability (10k+ users)
+            batch_size = 100
+            skip = 0
+            all_users = []
+            
+            while True:
+                batch = await db.users.find(
+                    {"active": True}, 
+                    {"_id": 0, "email": 1, "streak_count": 1}
+                ).skip(skip).limit(batch_size).to_list(batch_size)
+                
+                if not batch:
+                    break
+                
+                all_users.extend(batch)
+                skip += batch_size
+                
+                # Log progress every 1000 users
+                if len(all_users) % 1000 == 0:
+                    logger.info(f"📊 Streak recalculation progress: {len(all_users)} users processed...")
+            
+            users = all_users
+            logger.info(f"✅ Fetched {len(users)} users for streak recalculation")
         
         updated_count = 0
         results = []
@@ -8059,14 +8885,38 @@ async def admin_recalculate_streaks(email: Optional[str] = None):
 
 @api_router.post("/admin/achievements/{achievement_id}/assign-all", dependencies=[Depends(verify_admin)])
 async def admin_assign_achievement_to_all_users(achievement_id: str):
-    """Assign an achievement to all active users (admin only)"""
+    """
+    Assign an achievement to all active users (admin only).
+    Uses pagination to handle 10k+ users efficiently.
+    """
     # Verify achievement exists
     achievement = await db.achievements.find_one({"id": achievement_id, "active": True})
     if not achievement:
         raise HTTPException(status_code=404, detail="Achievement not found or inactive")
     
-    # Get all active users
-    users = await db.users.find({"active": True}, {"_id": 0, "email": 1, "achievements": 1}).to_list(1000)
+    # Use pagination for scalability (10k+ users)
+    batch_size = 100
+    skip = 0
+    all_users = []
+    
+    while True:
+        batch = await db.users.find(
+            {"active": True}, 
+            {"_id": 0, "email": 1, "achievements": 1}
+        ).skip(skip).limit(batch_size).to_list(batch_size)
+        
+        if not batch:
+            break
+        
+        all_users.extend(batch)
+        skip += batch_size
+        
+        # Log progress every 1000 users
+        if len(all_users) % 1000 == 0:
+            logger.info(f"📊 Achievement assignment progress: {len(all_users)} users processed...")
+    
+    users = all_users
+    logger.info(f"✅ Fetched {len(users)} users for achievement assignment")
     
     assigned_count = 0
     already_had_count = 0
@@ -8153,10 +9003,24 @@ async def restore_deleted_data(deletion_id: str):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    startup_start = time.time()
+    logger.info("=" * 60)
+    logger.info("🚀 Starting Tend API...")
+    logger.info("=" * 60)
+    
     try:
+        # Validate environment variables on startup
+        try:
+            logger.info("🔍 Validating environment variables...")
+            validate_environment()
+            logger.info("✅ Environment validation passed")
+        except RuntimeError as e:
+            logger.error(f"❌ Environment validation failed: {e}")
+            raise
+        
         try:
             await db.users.create_index("email", unique=True)
-            await db.pending_logins.create_index("email")
+            await db.users.create_index("clerk_user_id")  # Index for Clerk user ID lookups
             await db.message_history.create_index("email")
             await db.message_feedback.create_index("email")
             await db.email_logs.create_index([("email", 1), ("sent_at", -1)])
@@ -8229,14 +9093,37 @@ async def lifespan(app: FastAPI):
             logger.info("Scheduler already running")
 
         await schedule_user_emails()
-        logger.info("User email schedules initialized")
+        logger.info("✅ User email schedules initialized")
+        
+        startup_duration = time.time() - startup_start
+        logger.info(f"🚀 Application startup completed in {startup_duration:.2f}s")
+        logger.info("=" * 60)
+        logger.info("✅ Tend API is ready and running!")
+        logger.info("=" * 60)
 
         yield
+        
     finally:
+        shutdown_start = time.time()
+        logger.info("=" * 60)
+        logger.info("🛑 Application shutdown initiated...")
+        
         try:
+            logger.info("Stopping scheduler...")
             scheduler.shutdown()
+            logger.info("✅ Scheduler stopped")
         except Exception as e:
-            logger.warning(f"Scheduler shutdown warning: {e}")
-        client.close()
+            logger.warning(f"⚠️ Scheduler shutdown warning: {e}")
+        
+        try:
+            logger.info("Closing database connection...")
+            client.close()
+            logger.info("✅ Database connection closed")
+        except Exception as e:
+            logger.warning(f"⚠️ Database close warning: {e}")
+        
+        shutdown_duration = time.time() - shutdown_start
+        logger.info(f"✅ Application shutdown completed in {shutdown_duration:.2f}s")
+        logger.info("=" * 60)
 
 app.router.lifespan_context = lifespan

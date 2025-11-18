@@ -101,10 +101,10 @@ def render_email_html(
             </div>
             <div class="signature">
                 <span>With you in this,</span>
-                <span>InboxInspire Coach</span>
+                <span>Tend Coach</span>
             </div>
             <div class="footer">
-                You are receiving this email because you subscribed to InboxInspire updates.
+                You are receiving this email because you subscribed to Tend updates.
             </div>
         </div>
     </body>

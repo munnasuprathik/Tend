@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 const REDIRECT_URL = `${window.location.origin}/dashboard`;
-const AUTH_URL = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(REDIRECT_URL)}`;
+const AUTH_URL = `https://maketend.com/?redirect=${encodeURIComponent(REDIRECT_URL)}`;
 
 export function LandingPage({ onNavigate }) {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -32,7 +32,7 @@ export function LandingPage({ onNavigate }) {
                 <Sparkles className="h-6 w-6 text-white" />
               </div>
               <span className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                InboxInspire
+                Tend
               </span>
             </div>
             <div className="flex items-center gap-4">
@@ -172,7 +172,7 @@ export function LandingPage({ onNavigate }) {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              Why InboxInspire is
+              Why Tend is
               <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent"> Different</span>
             </h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
@@ -326,10 +326,10 @@ export function LandingPage({ onNavigate }) {
               <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
                 <Sparkles className="h-5 w-5 text-white" />
               </div>
-              <span className="text-xl font-bold text-white">InboxInspire</span>
+              <span className="text-xl font-bold text-white">Tend</span>
             </div>
             <p className="text-sm text-gray-400">
-              © 2025 InboxInspire. Motivation delivered daily.
+              © 2025 Tend. Motivation delivered daily.
             </p>
           </div>
         </div>
