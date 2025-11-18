@@ -8,7 +8,9 @@ import axios from "axios";
 import { toast } from "sonner";
 import { exportAnalytics } from "@/utils/exportData";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+// Use centralized API configuration
+import API_CONFIG from '@/config/api';
+const API = API_CONFIG.API_BASE;
 
 export const WeeklyMonthlyReports = React.memo(function WeeklyMonthlyReports({ email, user, refreshKey }) {
   const [weeklyData, setWeeklyData] = useState(null);

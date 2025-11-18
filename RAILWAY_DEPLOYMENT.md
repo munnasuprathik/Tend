@@ -42,8 +42,8 @@ SMTP_USERNAME=your-email@domain.com
 SMTP_PASSWORD=your-password
 CLERK_SECRET_KEY=sk_live_...
 ADMIN_SECRET=your-secret-key-here
-FRONTEND_URL=https://maketend.com
-CORS_ORIGINS=https://maketend.com,https://*.vercel.app
+FRONTEND_URL=https://your-frontend.vercel.app
+CORS_ORIGINS=https://your-frontend.vercel.app,https://*.vercel.app
 ENVIRONMENT=production
 ```
 
@@ -53,7 +53,7 @@ TAVILY_API_KEY=...
 IMAP_HOST=imap.hostinger.com
 INBOX_EMAIL=mail@domain.com
 INBOX_PASSWORD=...
-EMAIL_DOMAIN=maketend.com
+EMAIL_DOMAIN=yourdomain.com
 DB_NAME=tend
 PORT=8000
 ```

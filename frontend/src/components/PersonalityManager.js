@@ -12,7 +12,9 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { safeSelectValue, safePersonalityValue } from "@/utils/safeRender";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+// Use centralized API configuration
+import API_CONFIG from '@/config/api';
+const BACKEND_URL = API_CONFIG.BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 const FAMOUS_PERSONALITIES = [

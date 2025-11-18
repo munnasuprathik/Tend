@@ -21,8 +21,9 @@ import { toast } from "sonner";
 import { TIMEZONES } from "@/utils/timezones";
 import { formatDateTimeForTimezone } from "@/utils/timezoneFormatting";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+// Use centralized API configuration
+import API_CONFIG from '@/config/api';
+const API = API_CONFIG.API_BASE;
 
 const WEEKDAYS = [
   { value: 0, label: "Monday", short: "Mon" },

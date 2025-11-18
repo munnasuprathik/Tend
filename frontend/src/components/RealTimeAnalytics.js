@@ -5,7 +5,9 @@ import { Activity, Users, Zap, Clock, TrendingUp, Eye } from 'lucide-react';
 import axios from 'axios';
 import { formatDateTimeForTimezone } from "@/utils/timezoneFormatting";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+// Use centralized API configuration
+import API_CONFIG from '@/config/api';
+const API = API_CONFIG.API_BASE;
 const ADMIN_TIMEZONE = "Asia/Kolkata";
 
 export function RealTimeAnalytics({ adminToken }) {

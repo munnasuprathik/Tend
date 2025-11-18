@@ -60,9 +60,17 @@ spec:
               name: tend-secrets
               key: admin-secret
         - name: FRONTEND_URL
-          value: "https://maketend.com"
+          valueFrom:
+            configMapKeyRef:
+              name: tend-config
+              key: frontend-url
+              optional: false
         - name: CORS_ORIGINS
-          value: "https://maketend.com,https://*.vercel.app"
+          valueFrom:
+            configMapKeyRef:
+              name: tend-config
+              key: cors-origins
+              optional: false
         - name: ENVIRONMENT
           value: "production"
         - name: PORT
@@ -93,7 +101,11 @@ spec:
               key: inbox-password
               optional: true
         - name: EMAIL_DOMAIN
-          value: "maketend.com"
+          valueFrom:
+            configMapKeyRef:
+              name: tend-config
+              key: email-domain
+              optional: true
         - name: DB_NAME
           value: "tend"
         resources:

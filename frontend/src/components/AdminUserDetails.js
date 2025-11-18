@@ -6,7 +6,9 @@ import { X, Mail, Star, Activity, Clock, TrendingUp, User, Calendar, MessageSqua
 import axios from 'axios';
 import { formatDateTimeForTimezone, getDisplayTimezone } from "@/utils/timezoneFormatting";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+// Use centralized API configuration
+import API_CONFIG from '@/config/api';
+const API = API_CONFIG.API_BASE;
 
 export function AdminUserDetails({ email, adminToken, onClose }) {
   const [loading, setLoading] = useState(true);

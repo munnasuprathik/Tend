@@ -786,7 +786,7 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your-email@gmail.com
 SMTP_PASSWORD=your-app-password
-FRONTEND_URL=https://maketend.com
+FRONTEND_URL=https://your-frontend.vercel.app
 ADMIN_SECRET=your-secure-admin-secret
 ```
 

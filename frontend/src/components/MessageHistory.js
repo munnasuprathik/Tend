@@ -13,8 +13,9 @@ import { formatDateTimeForTimezone } from "@/utils/timezoneFormatting";
 import { SkeletonLoader } from "@/components/SkeletonLoader";
 import { retryWithBackoff } from "@/utils/retry";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+// Use centralized API configuration
+import API_CONFIG from '@/config/api';
+const API = API_CONFIG.API_BASE;
 
 export const MessageHistory = React.memo(function MessageHistory({ email, timezone, refreshKey = 0, onFeedbackSubmitted }) {
   const [messages, setMessages] = useState([]);

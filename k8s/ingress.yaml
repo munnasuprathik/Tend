@@ -1,5 +1,8 @@
 # Ingress for external access (if using ingress controller)
 # Update with your domain and TLS certificate
+#
+# IMPORTANT: Replace YOUR_API_DOMAIN with your actual API domain
+# Example: api.yourdomain.com or backend.yourdomain.com
 
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -15,10 +18,10 @@ spec:
   ingressClassName: nginx
   tls:
   - hosts:
-    - api.maketend.com
+    - YOUR_API_DOMAIN  # Replace with your actual API domain
     secretName: tend-backend-tls
   rules:
-  - host: api.maketend.com
+  - host: YOUR_API_DOMAIN  # Replace with your actual API domain
     http:
       paths:
       - path: /

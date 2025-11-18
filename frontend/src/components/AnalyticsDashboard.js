@@ -8,8 +8,9 @@ import { Button } from "@/components/ui/button";
 import { SkeletonLoader } from "@/components/SkeletonLoader";
 import { retryWithBackoff } from "@/utils/retry";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+// Use centralized API configuration
+import API_CONFIG from '@/config/api';
+const API = API_CONFIG.API_BASE;
 
 export const AnalyticsDashboard = React.memo(function AnalyticsDashboard({ email, refreshKey = 0, onNewAchievements }) {
   const [analytics, setAnalytics] = useState(null);
