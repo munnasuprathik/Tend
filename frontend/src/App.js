@@ -97,11 +97,11 @@ function AuthScreen() {
   }, [isSignUp]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 p-4">
-      <Card className="w-full max-w-md shadow-xl border-0">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-md shadow-lg border">
         <CardHeader className="text-center space-y-4">
-          <div className="mx-auto h-16 w-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
-            <Mail className="h-8 w-8 text-white" />
+          <div className="mx-auto h-16 w-16 rounded-2xl bg-primary flex items-center justify-center shadow-lg">
+            <Mail className="h-8 w-8 text-primary-foreground" />
           </div>
           <div>
             <CardTitle className="text-3xl font-bold">
@@ -125,11 +125,11 @@ function AuthScreen() {
                   card: "shadow-none border-none bg-transparent",
                   headerTitle: "hidden",
                   headerSubtitle: "hidden",
-                  socialButtonsBlockButton: "border border-slate-200",
-                  formButtonPrimary: "bg-indigo-600 hover:bg-indigo-700 text-white",
+                  socialButtonsBlockButton: "border border-border",
+                  formButtonPrimary: "bg-primary hover:bg-primary/90 text-primary-foreground",
                 },
                 variables: {
-                  colorPrimary: "#4f46e5",
+                  colorPrimary: "hsl(var(--primary))",
                 },
               }}
               afterSignUpUrl="/"
@@ -144,11 +144,11 @@ function AuthScreen() {
                   card: "shadow-none border-none bg-transparent",
                   headerTitle: "hidden",
                   headerSubtitle: "hidden",
-                  socialButtonsBlockButton: "border border-slate-200",
-                  formButtonPrimary: "bg-indigo-600 hover:bg-indigo-700 text-white",
+                  socialButtonsBlockButton: "border border-border",
+                  formButtonPrimary: "bg-primary hover:bg-primary/90 text-primary-foreground",
                 },
                 variables: {
-                  colorPrimary: "#4f46e5",
+                  colorPrimary: "hsl(var(--primary))",
                 },
               }}
               afterSignInUrl="/"
@@ -352,9 +352,9 @@ function OnboardingScreen({ email, onComplete }) {
           {[1, 2, 3, 4].map((s) => (
             <div key={s} className="flex items-center">
               <div className={`h-10 w-10 rounded-full flex items-center justify-center font-semibold transition-all ${
-                step >= s ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white' : 'bg-gray-200 text-gray-500'
+                step >= s ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
               }`}>{s}</div>
-              {s < 4 && <div className={`h-1 w-8 mx-1 transition-all ${step > s ? 'bg-indigo-500' : 'bg-gray-200'}`} />}
+              {s < 4 && <div className={`h-1 w-8 mx-1 transition-all ${step > s ? 'bg-primary' : 'bg-muted'}`} />}
             </div>
           ))}
         </div>
@@ -1013,13 +1013,13 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg flex-shrink-0">
-              <User className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+            <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-primary flex items-center justify-center shadow-lg flex-shrink-0">
+              <User className="h-5 w-5 sm:h-6 sm:w-6 text-primary-foreground" />
             </div>
             <div className="min-w-0 flex-1">
               <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold flex flex-wrap items-center gap-1 sm:gap-2">
                 <span className="break-words">Welcome back, {user.name}!</span>
-                <Sparkles className="h-5 w-5 sm:h-6 sm:w-6 text-indigo-500 flex-shrink-0" />
+                <Sparkles className="h-5 w-5 sm:h-6 sm:w-6 text-accent flex-shrink-0" />
               </h1>
               <p className="text-muted-foreground mt-1 flex items-center gap-1 text-sm sm:text-base">
                 <Mail className="h-3 w-3 flex-shrink-0" />
@@ -1035,7 +1035,7 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
 
         <Tabs defaultValue="overview" className="space-y-4 sm:space-y-6">
           <div className="overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0 scrollbar-hide">
-            <TabsList className="inline-flex w-full sm:grid sm:grid-cols-5 min-w-max sm:min-w-0 [&>*]:bg-transparent [&>*[data-state=active]]:bg-white [&>*[data-state=active]]:shadow-sm [&>*]:min-h-[44px] sm:[&>*]:min-h-0 [&>*]:touch-manipulation">
+            <TabsList className="inline-flex w-full sm:grid sm:grid-cols-5 min-w-max sm:min-w-0 [&>*]:bg-transparent [&>*]:text-foreground [&>*[data-state=active]]:bg-primary [&>*[data-state=active]]:text-primary-foreground [&>*[data-state=active]]:shadow-sm [&>*]:min-h-[44px] sm:[&>*]:min-h-0 [&>*]:touch-manipulation [&>*:hover]:bg-accent">
               <TabsTrigger value="overview" className="flex-shrink-0">
                 <BarChart3 className="h-4 w-4 mr-1 sm:mr-2" />
                 <span className="hidden sm:inline">Overview</span>

@@ -196,7 +196,7 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
       <Card>
         <CardContent className="py-12">
           <div className="flex flex-col items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-[#6B4EFF] mb-3" />
+            <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
             <p className="text-sm text-muted-foreground">Loading your message history...</p>
           </div>
         </CardContent>
@@ -295,7 +295,7 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2 min-w-0">
-                      <User className="h-4 w-4 text-[#6B4EFF] flex-shrink-0" />
+                      <User className="h-4 w-4 text-primary flex-shrink-0" />
                       <CardTitle className="text-base sm:text-lg truncate min-w-0">From {message.personality?.value || "Unknown"}</CardTitle>
                       {hasReplies && (
                         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 border border-green-300">
@@ -342,7 +342,7 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
                 </div>
               </CardHeader>
               <CardContent className="p-4 sm:p-6 space-y-4">
-                <div className="rounded-lg p-3 sm:p-4 border-l-2 bg-slate-50 border-[#6B4EFF]">
+                <div className="rounded-lg p-3 sm:p-4 border-l-2 bg-secondary border-primary">
                   <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap text-gray-700">
                     {message.message}
                   </p>
@@ -403,7 +403,7 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
                   <Button 
                     onClick={submitFeedback} 
                     disabled={submitting || rating === 0}
-                    className="w-full min-h-[44px] sm:min-h-0 bg-[#6B4EFF] hover:bg-[#5B3EEF] active:bg-[#4B2EDF]"
+                    className="w-full min-h-[44px] sm:min-h-0 bg-primary hover:bg-primary/90 active:bg-primary/80"
                     data-testid="submit-feedback-btn"
                   >
                     {submitting ? (

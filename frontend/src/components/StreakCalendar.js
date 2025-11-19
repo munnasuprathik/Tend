@@ -210,7 +210,7 @@ export const StreakCalendar = React.memo(function StreakCalendar({
                             {message.sent_at ? format(new Date(message.sent_at), "h:mm a") : 'Time unknown'}
                           </div>
                           {message.personality && (
-                            <div className="text-xs font-medium text-[#6B4EFF]">
+                            <div className="text-xs font-medium text-primary">
                               {message.personality.value || message.personality}
                             </div>
                           )}

@@ -88,19 +88,21 @@ export const AnalyticsDashboard = React.memo(function AnalyticsDashboard({ email
       </div>
 
       {/* Your Motivation Streak - Prominent at Top */}
-      <Card data-testid="streak-card" className="border-2 border-orange-200 bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 shadow-lg">
+      <Card data-testid="streak-card" className="border shadow-lg">
           <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold flex items-center gap-2 text-orange-900">
-            <Flame className="h-5 w-5 text-orange-500 animate-pulse" />
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Flame className="h-5 w-5 text-primary animate-pulse" />
             Your Motivation Streak
             </CardTitle>
           </CardHeader>
           <CardContent>
           <div className="flex items-baseline gap-2">
-            <p className="text-5xl font-bold text-orange-600">{analytics.streak_count}</p>
-            <p className="text-lg text-orange-700 font-medium">days</p>
+            <div className="bg-primary text-primary-foreground px-4 py-2 rounded-lg">
+              <p className="text-5xl font-bold">{analytics.streak_count}</p>
+            </div>
+            <p className="text-lg font-medium">days</p>
           </div>
-          <p className="text-sm text-orange-600 mt-2 font-medium">🔥 Keep the fire burning!</p>
+          <p className="text-sm text-primary mt-2 font-medium">🔥 Keep the fire burning!</p>
           <p className="text-xs text-muted-foreground mt-1">Consecutive days of motivation</p>
           </CardContent>
         </Card>

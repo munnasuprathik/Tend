@@ -37,7 +37,7 @@ export const StreakMilestones = React.memo(function StreakMilestones({ streakCou
 
   const getMilestoneIcon = (days) => {
     if (days >= 365) return <Trophy className="h-5 w-5 text-yellow-500" />;
-    if (days >= 100) return <Flame className="h-5 w-5 text-orange-500" />;
+    if (days >= 100) return <Flame className="h-5 w-5 text-primary" />;
     if (days >= 30) return <Target className="h-5 w-5 text-blue-500" />;
     return <Calendar className="h-5 w-5 text-green-500" />;
   };

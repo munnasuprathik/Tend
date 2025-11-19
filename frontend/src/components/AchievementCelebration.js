@@ -41,7 +41,7 @@ export function AchievementCelebration({ achievements, open, onClose, onViewAchi
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md border-2 border-yellow-400 bg-gradient-to-br from-yellow-50 via-amber-50 to-orange-50">
+      <DialogContent className="sm:max-w-md border-2 border-primary">
         {/* Confetti Effect */}
         {showConfetti && (
           <div className="fixed inset-0 pointer-events-none z-50">
@@ -113,7 +113,7 @@ export function AchievementCelebration({ achievements, open, onClose, onViewAchi
         <div className="flex flex-col sm:flex-row gap-2 mt-4">
           <Button
             onClick={onViewAchievements}
-            className="flex-1 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-semibold"
+            className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
           >
             <Trophy className="h-4 w-4 mr-2" />
             View All Achievements
