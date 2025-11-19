@@ -1,7 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { LiquidButton as Button } from "@/components/animate-ui/components/buttons/liquid";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -156,12 +156,12 @@ export function ScheduleManager({ user, onUpdate }) {
           >
             {schedule.paused ? (
               <>
-                <Play className="h-4 w-4 mr-2" />
+                <Play />
                 Resume
               </>
             ) : (
               <>
-                <Pause className="h-4 w-4 mr-2" />
+                <Pause />
                 Pause
               </>
             )}
@@ -172,7 +172,7 @@ export function ScheduleManager({ user, onUpdate }) {
             disabled={loading || schedule.paused || schedule.skip_next}
             data-testid="skip-next-btn"
           >
-            <SkipForward className="h-4 w-4 mr-2" />
+            <SkipForward />
             {schedule.skip_next ? 'Will Skip' : 'Skip Next'}
           </Button>
         </div>
@@ -244,7 +244,7 @@ export function ScheduleManager({ user, onUpdate }) {
               onClick={handleAddTimeWindow}
               disabled={schedule.send_time_windows.length >= 5}
             >
-              <Plus className="h-4 w-4 mr-1" />
+              <Plus />
               Add Time Window
             </Button>
           </div>

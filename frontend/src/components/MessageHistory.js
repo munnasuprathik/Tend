@@ -2,16 +2,19 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import React from "react";
 import axios from "axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { LiquidButton as Button } from "@/components/animate-ui/components/buttons/liquid";
 import { Input } from "@/components/ui/input";
-import { Star, MessageSquare, Loader2, User, Clock, Search, X, Heart, Download, Reply, CheckCircle2 } from "lucide-react";
+import { Star, MessageSquare, Loader2, User, Clock, Search, X, Heart, Download, Reply, CheckCircle2, Filter, Calendar } from "lucide-react";
 import { exportMessageHistory } from "@/utils/exportData";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/animate-ui/components/radix/dialog";
 import { formatDateTimeForTimezone } from "@/utils/timezoneFormatting";
 import { SkeletonLoader } from "@/components/SkeletonLoader";
 import { retryWithBackoff } from "@/utils/retry";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 // Use centralized API configuration
 import API_CONFIG from '@/config/api';
@@ -36,7 +39,6 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
       const response = await retryWithBackoff(async () => {
         return await axios.get(`${API}/users/${email}/message-history`);
       });
-      // Messages are already sorted chronologically by backend (includes replies)
       setMessages(response.data.messages || []);
       setStats({
         sent_count: response.data.sent_count || 0,
@@ -68,7 +70,7 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
     const interval = setInterval(() => {
       fetchMessages();
       fetchFavorites();
-    }, 30000); // 30 seconds
+    }, 30000);
 
     return () => clearInterval(interval);
   }, [fetchMessages, fetchFavorites]);
@@ -103,7 +105,6 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
     const sentMessages = messages.filter(m => m.type === "sent");
     const replyMessages = messages.filter(m => m.type === "reply");
     
-    // Create a map of message_id -> replies using linked_message_id
     const repliesMap = new Map();
     replyMessages.forEach(reply => {
       const linkedMessageId = reply.linked_message_id;
@@ -113,7 +114,6 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
         }
         repliesMap.get(linkedMessageId).push(reply);
       } else {
-        // Fallback: Find the most recent sent message before this reply
         const replyTime = new Date(reply.sent_at);
         const matchingMessage = sentMessages
           .filter(m => {
@@ -131,21 +131,19 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
       }
     });
     
-    // Sort replies by timestamp (newest first)
     repliesMap.forEach((replies, msgId) => {
       replies.sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at));
     });
     
-    // Group sent messages with their replies
     const grouped = sentMessages.map(msg => ({
       ...msg,
-      replies: (repliesMap.get(msg.id) || []).sort((a, b) => new Date(a.sent_at) - new Date(b.sent_at)) // Oldest first for display
+      replies: (repliesMap.get(msg.id) || []).sort((a, b) => new Date(a.sent_at) - new Date(b.sent_at))
     })).sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at));
     
     return grouped;
   }, [messages]);
 
-  // Filter and search messages - MUST be called before any early returns
+  // Filter and search messages
   const filteredMessages = useMemo(() => {
     return groupedMessages.filter((group) => {
       const message = group;
@@ -155,12 +153,60 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
         message.subject?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
         (message.replies?.some(r => r.message?.toLowerCase().includes(debouncedSearchQuery.toLowerCase())));
       
-      // For replies, skip rating filter (replies don't have ratings)
       const matchesRating = filterRating === null || message.rating === filterRating;
       
       return matchesSearch && matchesRating;
     });
   }, [groupedMessages, debouncedSearchQuery, filterRating]);
+
+  // Group messages by date
+  const messagesByDate = useMemo(() => {
+    const groups = {};
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const thisWeek = new Date(today);
+    thisWeek.setDate(thisWeek.getDate() - 7);
+    const thisMonth = new Date(today);
+    thisMonth.setMonth(thisMonth.getMonth() - 1);
+
+    filteredMessages.forEach((message) => {
+      const msgDate = new Date(message.sent_at);
+      const msgDateOnly = new Date(msgDate.getFullYear(), msgDate.getMonth(), msgDate.getDate());
+      
+      let groupKey;
+      if (msgDateOnly.getTime() === today.getTime()) {
+        groupKey = 'Today';
+      } else if (msgDateOnly.getTime() === yesterday.getTime()) {
+        groupKey = 'Yesterday';
+      } else if (msgDate >= thisWeek) {
+        groupKey = 'This Week';
+      } else if (msgDate >= thisMonth) {
+        groupKey = 'This Month';
+      } else {
+        groupKey = msgDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      }
+
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      groups[groupKey].push(message);
+    });
+
+    // Sort groups by date (most recent first)
+    const sortedGroups = Object.entries(groups).sort((a, b) => {
+      const order = ['Today', 'Yesterday', 'This Week', 'This Month'];
+      const aIndex = order.indexOf(a[0]);
+      const bIndex = order.indexOf(b[0]);
+      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+      if (aIndex !== -1) return -1;
+      if (bIndex !== -1) return 1;
+      return new Date(b[1][0].sent_at) - new Date(a[1][0].sent_at);
+    });
+
+    return sortedGroups;
+  }, [filteredMessages]);
 
   const submitFeedback = async () => {
     if (rating === 0) {
@@ -193,25 +239,22 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
 
   if (loading) {
     return (
-      <Card>
-        <CardContent className="py-12">
-          <div className="flex flex-col items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-            <p className="text-sm text-muted-foreground">Loading your message history...</p>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <SkeletonLoader variant="card" count={3} />
+      </div>
     );
   }
 
   if (messages.length === 0) {
     return (
-      <Card>
-        <CardContent className="py-16 text-center">
+      <Card className="border border-border/30 bg-card/50 backdrop-blur-sm">
+        <CardContent className="py-20 text-center">
           <div className="flex flex-col items-center">
-            <MessageSquare className="h-16 w-16 text-slate-300 mb-4" />
-            <p className="text-lg font-medium text-gray-700 mb-2">No messages yet</p>
-            <p className="text-sm text-muted-foreground max-w-md">
+            <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-muted/50 to-muted/30 border border-border/30 flex items-center justify-center mb-5">
+              <MessageSquare className="h-10 w-10 text-muted-foreground/50" />
+            </div>
+            <h3 className="text-lg font-semibold mb-2 text-foreground">No messages yet</h3>
+            <p className="text-sm text-muted-foreground max-w-md leading-relaxed">
               Your first motivational message is coming soon! Make sure your schedule is active in Settings.
             </p>
           </div>
@@ -221,274 +264,406 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-        <div>
-          <h3 className="text-lg font-semibold">Your Message History</h3>
-          <p className="text-xs text-muted-foreground mt-1">
-            {filteredMessages.length} of {messages.length} {messages.length === 1 ? 'item' : 'items'}
-            {stats.reply_count > 0 && (
-              <span className="ml-2">({stats.reply_count} {stats.reply_count === 1 ? 'reply' : 'replies'})</span>
-            )}
-          </p>
+    <div className="space-y-6">
+      {/* Stats Cards - Compact Design with Visual Indicators */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-2">
+          <Card className="border border-blue-500/20 bg-gradient-to-br from-blue-500/5 to-blue-400/3 hover:border-blue-500/30 hover:shadow-md transition-all duration-300 group">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 group-hover:bg-blue-500/15 transition-colors">
+                    <MessageSquare className="h-4 w-4 text-blue-500" />
+                  </div>
+                  <p className="text-xs font-semibold text-blue-600/70 dark:text-blue-400/70 uppercase tracking-wider">Total Messages</p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-3xl font-bold tracking-tight text-foreground">{stats.sent_count}</p>
+                <div className="flex items-center gap-2">
+                  <div className="w-16 h-1 bg-blue-500/10 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-blue-500 rounded-full"
+                      style={{ width: `${Math.min(100, (stats.sent_count / 100) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground font-medium">All time</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-green-500/20 bg-gradient-to-br from-green-500/5 to-green-400/3 hover:border-green-500/30 hover:shadow-md transition-all duration-300 group">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/20 group-hover:bg-green-500/15 transition-colors">
+                    <Reply className="h-4 w-4 text-green-500" />
+                  </div>
+                  <p className="text-xs font-semibold text-green-600/70 dark:text-green-400/70 uppercase tracking-wider">Replies</p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-3xl font-bold tracking-tight text-foreground">{stats.reply_count}</p>
+                <div className="flex items-center gap-2">
+                  <div className="w-16 h-1 bg-green-500/10 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-green-500 rounded-full"
+                      style={{ width: `${stats.sent_count > 0 ? Math.min(100, (stats.reply_count / stats.sent_count) * 100) : 0}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground font-medium">
+                    {stats.sent_count > 0 ? `${Math.round((stats.reply_count / stats.sent_count) * 100)}% rate` : 'No replies'}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-purple-500/20 bg-gradient-to-br from-purple-500/5 to-purple-400/3 hover:border-purple-500/30 hover:shadow-md transition-all duration-300 group">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20 group-hover:bg-purple-500/15 transition-colors">
+                    <Filter className="h-4 w-4 text-purple-500" />
+                  </div>
+                  <p className="text-xs font-semibold text-purple-600/70 dark:text-purple-400/70 uppercase tracking-wider">Showing</p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-3xl font-bold tracking-tight text-foreground">{filteredMessages.length}</p>
+                <div className="flex items-center gap-2">
+                  <div className="w-16 h-1 bg-purple-500/10 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-purple-500 rounded-full"
+                      style={{ width: `${messages.length > 0 ? Math.min(100, (filteredMessages.length / messages.length) * 100) : 0}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground font-medium">
+                    {filteredMessages.length === messages.length ? 'All' : 'Filtered'}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => exportMessageHistory(messages)}
-            className="flex-shrink-0"
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Export CSV
-          </Button>
-          <div className="relative flex-1 sm:flex-initial sm:w-64">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search messages..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-9 h-9"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
+
+      {/* Filters and Search */}
+      <Card className="border border-border/30 hover:border-border/50 transition-all duration-300">
+        <CardContent className="p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row gap-4">
+            {/* Search */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search messages, personalities, or content..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-9 h-10"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Rating Filter */}
+            <Select value={filterRating?.toString() || "all"} onValueChange={(value) => setFilterRating(value === "all" ? null : Number(value))}>
+              <SelectTrigger className="w-full sm:w-[180px] h-10">
+                <div className="flex items-center gap-2">
+                  <Star className="h-4 w-4" />
+                  <SelectValue placeholder="Filter by rating" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Ratings</SelectItem>
+                <SelectItem value="5">5 Stars</SelectItem>
+                <SelectItem value="4">4 Stars</SelectItem>
+                <SelectItem value="3">3 Stars</SelectItem>
+                <SelectItem value="2">2 Stars</SelectItem>
+                <SelectItem value="1">1 Star</SelectItem>
+                <SelectItem value="0">Unrated</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Export Button */}
+            <Button
+              variant="outline"
+              onClick={() => exportMessageHistory(messages)}
+              className="h-10 shrink-0"
+            >
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Export</span>
+            </Button>
           </div>
-          <select
-            value={filterRating || ""}
-            onChange={(e) => setFilterRating(e.target.value ? Number(e.target.value) : null)}
-            className="h-9 px-3 rounded-md border border-input bg-background text-sm"
-          >
-            <option value="">All Ratings</option>
-            <option value="5">5 Stars</option>
-            <option value="4">4 Stars</option>
-            <option value="3">3 Stars</option>
-            <option value="2">2 Stars</option>
-            <option value="1">1 Star</option>
-            <option value="0">Unrated</option>
-          </select>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
+
+      {/* Messages List */}
       {filteredMessages.length === 0 && messages.length > 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">No messages match your search criteria.</p>
+        <Card className="border border-border/30 bg-card/50 backdrop-blur-sm">
+          <CardContent className="py-16 text-center">
+            <div className="flex flex-col items-center">
+              <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-muted/50 to-muted/30 border border-border/30 flex items-center justify-center mx-auto mb-4">
+                <Search className="h-8 w-8 text-muted-foreground/50" />
+              </div>
+              <p className="text-base font-semibold mb-1.5 text-foreground">No messages found</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">Try adjusting your search or filter criteria.</p>
+            </div>
           </CardContent>
         </Card>
       ) : (
-        filteredMessages.map((message) => {
-          const hasReplies = message.replies && message.replies.length > 0;
-          
-          return (
-          <div key={message.id} className="space-y-3">
-            {/* Original Message */}
-            <Card 
-              data-testid="message-history-item" 
-              className={`hover:shadow-md transition-shadow ${hasReplies ? 'border-green-300 border-2' : ''}`}
-            >
-              <CardHeader className="p-4 sm:p-6">
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2 min-w-0">
-                      <User className="h-4 w-4 text-primary flex-shrink-0" />
-                      <CardTitle className="text-base sm:text-lg truncate min-w-0">From {message.personality?.value || "Unknown"}</CardTitle>
-                      {hasReplies && (
-                        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 border border-green-300">
-                          <CheckCircle2 className="h-3 w-3 text-green-600" />
-                          <span className="text-xs font-semibold text-green-700">
-                            {message.replies.length === 1 ? 'Replied' : `${message.replies.length} replies`}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Clock className="h-3 w-3" />
-                      <span>{formatDateTimeForTimezone(message.sent_at, timezone)}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleFavorite(message.id)}
-                      className="h-8 w-8 p-0"
-                    >
-                      <Heart
-                        className={`h-4 w-4 ${
-                          favoriteMessages.includes(message.id)
-                            ? "fill-red-500 text-red-500"
-                            : "text-gray-400"
-                        }`}
-                      />
-                    </Button>
-                    {message.used_fallback && (
-                      <span className="text-xs font-medium px-2 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
-                        Backup
-                      </span>
-                    )}
-                    {message.rating && (
-                      <div className="flex items-center gap-1">
-                        {[...Array(message.rating)].map((_, i) => (
-                          <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                        ))}
-                      </div>
-                    )}
-                  </div>
+        <div className="space-y-6">
+          {messagesByDate.map(([dateGroup, messages]) => (
+            <div key={dateGroup} className="space-y-4">
+              {/* Date Group Header */}
+              <div className="flex items-center gap-3 sticky top-0 z-10 bg-background/80 backdrop-blur-sm py-2 -mt-2">
+                <div className="h-px flex-1 bg-border" />
+                <div className="flex items-center gap-2 px-3">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">{dateGroup}</span>
+                  <Badge variant="secondary" className="text-xs">{messages.length}</Badge>
                 </div>
-              </CardHeader>
-              <CardContent className="p-4 sm:p-6 space-y-4">
-                <div className="rounded-lg p-3 sm:p-4 border-l-2 bg-secondary border-primary">
-                  <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap text-gray-700">
-                    {message.message}
-                  </p>
-                </div>
-                <Dialog open={selectedMessage?.id === message.id} onOpenChange={(open) => !open && setSelectedMessage(null)}>
-                  <DialogTrigger asChild>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => {
-                        setSelectedMessage(message);
-                        setRating(message.rating || 0);
-                        setFeedbackText("");
-                      }}
-                      data-testid="rate-message-btn"
-                      className="w-full sm:w-auto min-h-[44px]"
-                    >
-                      <Star className="h-4 w-4 mr-2" />
-                      {message.rating ? 'Update Rating' : 'Rate This Message'}
-                    </Button>
-                  </DialogTrigger>
-              <DialogContent className="w-[95vw] sm:w-full p-4 sm:p-6">
-                <DialogHeader>
-                  <DialogTitle className="text-lg sm:text-xl">Rate This Message</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 sm:space-y-6 pt-3 sm:pt-4">
-                  <div>
-                    <label className="text-sm sm:text-base font-medium mb-3 sm:mb-2 block">How inspiring was this message?</label>
-                    <div className="flex gap-2 sm:gap-3 justify-center sm:justify-start">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <button
-                          key={star}
-                          onClick={() => setRating(star)}
-                          className="transition-transform hover:scale-110 active:scale-95 touch-manipulation min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center"
-                          data-testid={`star-${star}`}
-                        >
-                          <Star 
-                            className={`h-10 w-10 sm:h-8 sm:w-8 ${
-                              star <= rating 
-                                ? 'fill-yellow-400 text-yellow-400' 
-                                : 'text-gray-300'
-                            }`}
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm sm:text-base font-medium mb-2 block">Additional Feedback (Optional)</label>
-                    <Textarea
-                      placeholder="What did you like or what could be improved?"
-                      value={feedbackText}
-                      onChange={(e) => setFeedbackText(e.target.value)}
-                      rows={4}
-                      className="min-h-[100px] sm:min-h-[80px]"
-                    />
-                  </div>
-                  <Button 
-                    onClick={submitFeedback} 
-                    disabled={submitting || rating === 0}
-                    className="w-full min-h-[44px] sm:min-h-0 bg-primary hover:bg-primary/90 active:bg-primary/80"
-                    data-testid="submit-feedback-btn"
-                  >
-                    {submitting ? (
-                      <>
-                        <Loader2 className="h-4 w-4 sm:mr-2 animate-spin" />
-                        <span className="sm:inline">Submitting...</span>
-                      </>
-                    ) : (
-                      'Submit Feedback'
-                    )}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-            </CardContent>
-          </Card>
-          
-          {/* Show Replies Below Original Message */}
-          {hasReplies && (
-            <div className="ml-4 sm:ml-8 space-y-2 border-l-2 border-blue-300 pl-4">
-              {message.replies.map((reply) => (
+                <div className="h-px flex-1 bg-border" />
+              </div>
+              
+              {/* Messages in this date group */}
+              {messages.map((message) => {
+            const hasReplies = message.replies && message.replies.length > 0;
+            const isFavorite = favoriteMessages.includes(message.id);
+            
+            return (
+              <div key={message.id} className="space-y-3">
+                {/* Main Message Card */}
                 <Card 
-                  key={reply.id}
-                  className="bg-blue-50/50 border-blue-200 hover:shadow-md transition-shadow"
+                  data-testid="message-history-item" 
+                  className={cn(
+                    "group hover:shadow-md transition-all duration-300 border border-border/30 hover:border-border/50",
+                    hasReplies && "border-2 border-border/40"
+                  )}
                 >
-                  <CardHeader className="p-3 sm:p-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Reply className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                      <CardTitle className="text-sm sm:text-base text-blue-700">Your Reply</CardTitle>
-                      {reply.reply_sentiment && (
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                          reply.reply_sentiment === 'positive' ? 'bg-green-100 text-green-700' :
-                          reply.reply_sentiment === 'struggling' ? 'bg-red-100 text-red-700' :
-                          reply.reply_sentiment === 'excited' ? 'bg-yellow-100 text-yellow-700' :
-                          reply.reply_sentiment === 'confused' ? 'bg-orange-100 text-orange-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {reply.reply_sentiment}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Clock className="h-3 w-3" />
-                      <span>{formatDateTimeForTimezone(reply.sent_at, timezone)}</span>
+                  <CardHeader className="pb-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="p-2 rounded-lg bg-muted group-hover:bg-accent transition-colors">
+                            <User className="h-5 w-5 text-foreground" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <CardTitle className="text-lg font-semibold mb-1">
+                              {message.personality?.value || "Unknown Personality"}
+                            </CardTitle>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Clock className="h-3.5 w-3.5" />
+                              <span>{formatDateTimeForTimezone(message.sent_at, timezone)}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Badges */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {hasReplies && (
+                            <Badge variant="outline" className="gap-1.5">
+                              <CheckCircle2 className="h-3 w-3" />
+                              {message.replies.length === 1 ? 'Replied' : `${message.replies.length} replies`}
+                            </Badge>
+                          )}
+                          {message.used_fallback && (
+                            <Badge variant="outline">Backup</Badge>
+                          )}
+                          {message.rating && (
+                            <div className="flex items-center gap-1">
+                              {[...Array(message.rating)].map((_, i) => (
+                                <Star key={i} className="h-4 w-4 fill-foreground text-foreground" />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => toggleFavorite(message.id)}
+                          className="h-9 w-9"
+                        >
+                          <Heart
+                            className={cn(
+                              "h-4 w-4 transition-colors",
+                              isFavorite ? "fill-foreground text-foreground" : "text-muted-foreground hover:text-foreground"
+                            )}
+                          />
+                        </Button>
+                      </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="p-3 sm:p-4 space-y-3">
-                    <div className="rounded-lg p-3 border-l-2 bg-blue-50 border-blue-400">
-                      <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap text-blue-900">
-                        {reply.message}
+
+                  <CardContent className="space-y-4">
+                    {/* Message Content */}
+                    <div className="rounded-lg p-4 bg-muted/50 border border-border">
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
+                        {message.message}
                       </p>
                     </div>
-                    {(reply.extracted_wins?.length > 0 || reply.extracted_struggles?.length > 0) && (
-                      <div className="bg-white rounded-lg p-2 border border-blue-200">
-                        <p className="text-xs font-semibold text-blue-700 mb-2">Insights:</p>
-                        {reply.extracted_wins?.length > 0 && (
-                          <div className="mb-2">
-                            <p className="text-xs font-medium text-green-700 mb-1">Wins:</p>
-                            <ul className="text-xs text-gray-600 list-disc list-inside">
-                              {reply.extracted_wins.map((win, idx) => (
-                                <li key={idx}>{win}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        {reply.extracted_struggles?.length > 0 && (
+
+                    {/* Rate Button */}
+                    <Dialog open={selectedMessage?.id === message.id} onOpenChange={(open) => !open && setSelectedMessage(null)}>
+                      <DialogTrigger asChild>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => {
+                            setSelectedMessage(message);
+                            setRating(message.rating || 0);
+                            setFeedbackText("");
+                          }}
+                          data-testid="rate-message-btn"
+                          className="w-full sm:w-auto"
+                        >
+                          <Star className={cn("h-4 w-4", message.rating && "fill-foreground text-foreground")} />
+                          {message.rating ? 'Update Rating' : 'Rate This Message'}
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent from="top" showCloseButton={true} className="sm:max-w-[500px]">
+                        <DialogHeader>
+                          <DialogTitle>Rate This Message</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-6 pt-4">
                           <div>
-                            <p className="text-xs font-medium text-red-700 mb-1">Struggles:</p>
-                            <ul className="text-xs text-gray-600 list-disc list-inside">
-                              {reply.extracted_struggles.map((struggle, idx) => (
-                                <li key={idx}>{struggle}</li>
+                            <label className="text-sm font-medium mb-3 block">How inspiring was this message?</label>
+                            <div className="flex gap-2 justify-center">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                  key={star}
+                                  onClick={() => setRating(star)}
+                                  className="transition-transform hover:scale-110 active:scale-95"
+                                >
+                                  <Star 
+                                    className={cn(
+                                      "h-8 w-8 transition-colors",
+                                      star <= rating 
+                                        ? 'fill-foreground text-foreground' 
+                                        : 'text-muted-foreground'
+                                    )}
+                                  />
+                                </button>
                               ))}
-                            </ul>
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    )}
+                          <div>
+                            <label className="text-sm font-medium mb-2 block">Additional Feedback (Optional)</label>
+                            <Textarea
+                              placeholder="What did you like or what could be improved?"
+                              value={feedbackText}
+                              onChange={(e) => setFeedbackText(e.target.value)}
+                              rows={4}
+                              className="resize-none"
+                            />
+                          </div>
+                          <Button 
+                            onClick={submitFeedback} 
+                            disabled={submitting || rating === 0}
+                            className="w-full"
+                          >
+                            {submitting ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Submitting...
+                              </>
+                            ) : (
+                              'Submit Feedback'
+                            )}
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   </CardContent>
                 </Card>
-              ))}
+                
+                {/* Replies Section */}
+                {hasReplies && (
+                  <div className="ml-0 sm:ml-8 space-y-3 pl-0 sm:pl-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Reply className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium text-muted-foreground">
+                        {message.replies.length === 1 ? 'Your Reply' : 'Your Replies'}
+                      </span>
+                    </div>
+                    {message.replies.map((reply) => (
+                      <Card 
+                        key={reply.id}
+                        className="bg-muted/30 border-border hover:shadow-md transition-shadow"
+                      >
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="p-1.5 rounded-lg bg-muted">
+                                <Reply className="h-4 w-4 text-foreground" />
+                              </div>
+                              <div>
+                                <CardTitle className="text-sm font-semibold">Your Reply</CardTitle>
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                                  <Clock className="h-3 w-3" />
+                                  <span>{formatDateTimeForTimezone(reply.sent_at, timezone)}</span>
+                                </div>
+                              </div>
+                            </div>
+                            {reply.reply_sentiment && (
+                              <Badge variant="outline" className="text-xs">
+                                {reply.reply_sentiment}
+                              </Badge>
+                            )}
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                          <div className="rounded-lg p-3 bg-background border border-border">
+                            <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
+                              {reply.message}
+                            </p>
+                          </div>
+                          
+                          {/* Insights */}
+                          {(reply.extracted_wins?.length > 0 || reply.extracted_struggles?.length > 0) && (
+                            <div className="mt-3 p-3 rounded-lg bg-muted/50 border border-border">
+                              <p className="text-xs font-semibold text-foreground mb-2">Insights</p>
+                              {reply.extracted_wins?.length > 0 && (
+                                <div className="mb-2">
+                                  <p className="text-xs font-medium text-foreground mb-1">Wins</p>
+                                  <ul className="text-xs text-muted-foreground list-disc list-inside space-y-0.5">
+                                    {reply.extracted_wins.map((win, idx) => (
+                                      <li key={idx}>{win}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {reply.extracted_struggles?.length > 0 && (
+                                <div>
+                                  <p className="text-xs font-medium text-foreground mb-1">Struggles</p>
+                                  <ul className="text-xs text-muted-foreground list-disc list-inside space-y-0.5">
+                                    {reply.extracted_struggles.map((struggle, idx) => (
+                                      <li key={idx}>{struggle}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
             </div>
-          )}
-          </div>
-          );
-        })
+          ))}
+        </div>
       )}
     </div>
   );

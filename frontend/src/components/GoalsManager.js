@@ -2,15 +2,15 @@ import { useState, useEffect, useCallback } from "react";
 import React from "react";
 import axios from "axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { LiquidButton as Button } from "@/components/animate-ui/components/buttons/liquid";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/animate-ui/components/radix/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TabGroup, TabList, Tab, TabPanels, TabPanel } from "@/components/animate-ui/components/headless/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
@@ -18,6 +18,7 @@ import {
   Target, Zap, Mail, Settings, Play, Pause, Sparkles, Timer, Info, Loader2
 } from "lucide-react";
 import { toast } from "sonner";
+import { showNotification } from "@/components/animate-ui/components/community/notification-list";
 import { TIMEZONES } from "@/utils/timezones";
 import { formatDateTimeForTimezone } from "@/utils/timezoneFormatting";
 
@@ -91,6 +92,7 @@ export function GoalsManager({ user, onUpdate }) {
       setGoals(response.data.goals || []);
     } catch (error) {
       console.error("Failed to fetch goals:", error);
+      showNotification({ type: 'error', message: "Failed to load goals", title: "Error" });
       toast.error("Failed to load goals");
     }
   }, [user.email]);
@@ -343,6 +345,7 @@ export function GoalsManager({ user, onUpdate }) {
 
   const handleAddTimeWindow = () => {
     if (formData.send_time_windows.length >= 5) {
+      showNotification({ type: 'error', message: "Maximum 5 time windows allowed", title: "Validation Error" });
       toast.error("Maximum 5 time windows allowed");
       return;
     }
@@ -384,31 +387,37 @@ export function GoalsManager({ user, onUpdate }) {
   const handleSubmit = async () => {
     // Validation
     if (!formData.title.trim()) {
+      showNotification({ type: 'error', message: "Title is required", title: "Validation Error" });
       toast.error("Title is required");
       setActiveTab("basic");
       return;
     }
     if (!formData.description.trim()) {
+      showNotification({ type: 'error', message: "Description is required", title: "Validation Error" });
       toast.error("Description is required");
       setActiveTab("basic");
       return;
     }
     if (formData.schedules.length === 0) {
+      showNotification({ type: 'error', message: "At least one schedule is required", title: "Validation Error" });
       toast.error("At least one schedule is required");
       setActiveTab("schedules");
       return;
     }
     if (formData.mode === "personality" && !formData.personality_id) {
+      showNotification({ type: 'error', message: "Please select a personality", title: "Validation Error" });
       toast.error("Please select a personality");
       setActiveTab("content");
       return;
     }
     if (formData.mode === "tone" && !formData.tone) {
+      showNotification({ type: 'error', message: "Please select a tone", title: "Validation Error" });
       toast.error("Please select a tone");
       setActiveTab("content");
       return;
     }
     if (formData.mode === "custom" && !formData.custom_text.trim()) {
+      showNotification({ type: 'error', message: "Please provide custom text", title: "Validation Error" });
       toast.error("Please provide custom text");
       setActiveTab("content");
       return;
@@ -505,7 +514,8 @@ export function GoalsManager({ user, onUpdate }) {
           
           try {
             await axios.put(`${API}/users/${user.email}`, userUpdatePayload);
-            toast.success("🎯 Primary Goal Updated!", {
+            showNotification({ type: 'success', message: "Your main goal has been updated successfully. Keep pushing forward!", title: "Primary Goal Updated" });
+            toast.success("Primary Goal Updated!", {
               description: "Your main goal has been updated successfully. Keep pushing forward!",
               duration: 4000,
             });
@@ -513,7 +523,8 @@ export function GoalsManager({ user, onUpdate }) {
             // Additional celebratory toast for active status
             if (formData.active) {
               setTimeout(() => {
-                toast.success("✨ Goal Activated!", {
+                showNotification({ type: 'success', message: "Your goal is now active and you'll receive motivational emails!", title: "Goal Activated" });
+                toast.success("Goal Activated!", {
                   description: "Your goal is now active and you'll receive motivational emails!",
                   duration: 3000,
                 });
@@ -531,6 +542,7 @@ export function GoalsManager({ user, onUpdate }) {
             }
           } catch (error) {
             console.error("Failed to update primary goal:", error);
+            showNotification({ type: 'error', message: error.response?.data?.detail || "Failed to update primary goal", title: "Error" });
             toast.error(error.response?.data?.detail || "Failed to update primary goal");
             setLoading(false);
             return; // Exit early on error
@@ -543,7 +555,8 @@ export function GoalsManager({ user, onUpdate }) {
           return; // Exit early after main goal update
         } else {
           await axios.put(`${API}/users/${user.email}/goals/${editingGoal.id}`, payload);
-          toast.success("🚀 Goal Updated!", {
+          showNotification({ type: 'success', message: "Your goal has been updated. You're one step closer to success!", title: "Goal Updated" });
+          toast.success("Goal Updated!", {
             description: "Your goal has been updated. You're one step closer to success!",
             duration: 4000,
           });
@@ -551,7 +564,8 @@ export function GoalsManager({ user, onUpdate }) {
           // Additional toast for active status
           if (formData.active) {
             setTimeout(() => {
-              toast.success("💪 Goal Activated!", {
+              showNotification({ type: 'success', message: "This goal is now active and sending you motivation!", title: "Goal Activated" });
+              toast.success("Goal Activated!", {
                 description: "This goal is now active and sending you motivation!",
                 duration: 3000,
               });
@@ -560,14 +574,16 @@ export function GoalsManager({ user, onUpdate }) {
         }
       } else {
         await axios.post(`${API}/users/${user.email}/goals`, payload);
-        toast.success("🎉 New Goal Created!", {
+        showNotification({ type: 'success', message: "Congratulations! Your new goal has been added. Let's make it happen!", title: "New Goal Created" });
+        toast.success("New Goal Created!", {
           description: "Congratulations! Your new goal has been added. Let's make it happen!",
           duration: 4000,
         });
         
         // Additional celebratory toasts
         setTimeout(() => {
-          toast.success("📧 Emails Scheduled!", {
+          showNotification({ type: 'success', message: "You'll start receiving motivational emails for this goal soon!", title: "Emails Scheduled" });
+          toast.success("Emails Scheduled!", {
             description: "You'll start receiving motivational emails for this goal soon!",
             duration: 3000,
           });
@@ -575,7 +591,8 @@ export function GoalsManager({ user, onUpdate }) {
         
         if (formData.active) {
           setTimeout(() => {
-            toast.success("✨ Goal is Active!", {
+            showNotification({ type: 'success', message: "This goal is now active and sending you motivation!", title: "Goal is Active" });
+            toast.success("Goal is Active!", {
               description: "This goal is active and ready to motivate you daily!",
               duration: 3000,
             });
@@ -596,6 +613,7 @@ export function GoalsManager({ user, onUpdate }) {
         }
       }
     } catch (error) {
+      showNotification({ type: 'error', message: error.response?.data?.detail || "Failed to save goal", title: "Error" });
       toast.error(error.response?.data?.detail || "Failed to save goal");
     } finally {
       setLoading(false);
@@ -620,14 +638,16 @@ export function GoalsManager({ user, onUpdate }) {
           goals: "",
           schedule: null
         });
-        toast.success("🗑️ Primary Goal Deleted", {
+        showNotification({ type: 'success', message: "Primary goal has been deleted", title: "Goal Deleted" });
+        toast.success("Primary Goal Deleted", {
           description: "Your primary goal has been removed. You can always create a new one!",
           duration: 3000,
         });
       } else {
         // For regular goals, use the delete endpoint
         await axios.delete(`${API}/users/${user.email}/goals/${goalId}`);
-        toast.success("🗑️ Goal Deleted", {
+        showNotification({ type: 'success', message: "Goal has been deleted", title: "Goal Deleted" });
+        toast.success("Goal Deleted", {
           description: "The goal has been removed. You can always create a new one!",
           duration: 3000,
         });
@@ -645,6 +665,7 @@ export function GoalsManager({ user, onUpdate }) {
         }
       }
     } catch (error) {
+      showNotification({ type: 'error', message: "Failed to delete goal", title: "Error" });
       toast.error("Failed to delete goal");
       console.error("Delete error:", error);
     } finally {
@@ -674,12 +695,13 @@ export function GoalsManager({ user, onUpdate }) {
       }
       
       if (!goal.active) {
-        toast.success("✨ Goal Activated!", {
+        toast.success("Goal Activated!", {
           description: "This goal is now active and will send you motivational emails!",
           duration: 3000,
         });
         setTimeout(() => {
-          toast.success("💪 You're Ready!", {
+          showNotification({ type: 'success', message: "You're ready to receive motivation!", title: "Ready" });
+          toast.success("You're Ready!", {
             description: "Get ready to receive daily motivation for this goal!",
             duration: 2500,
           });
@@ -702,6 +724,7 @@ export function GoalsManager({ user, onUpdate }) {
         }
       }
     } catch (error) {
+      showNotification({ type: 'error', message: "Failed to update goal", title: "Error" });
       toast.error("Failed to update goal");
       console.error("Toggle active error:", error);
     } finally {
@@ -716,6 +739,7 @@ export function GoalsManager({ user, onUpdate }) {
       const response = await axios.get(`${API}/users/${user.email}/goals/${goal.id}/history`);
       setGoalHistory(response.data.messages || []);
     } catch (error) {
+      showNotification({ type: 'error', message: "Failed to load goal history", title: "Error" });
       toast.error("Failed to load goal history");
       setGoalHistory([]);
     } finally {
@@ -765,24 +789,25 @@ export function GoalsManager({ user, onUpdate }) {
           <Dialog open={showModal} onOpenChange={setShowModal}>
             <DialogTrigger asChild>
               <Button size="sm" onClick={() => handleOpenModal()} className="w-full sm:w-auto">
-                <Plus className="h-4 w-4 sm:mr-2" />
+                <Plus />
                 <span className="sm:inline">Create New Goal</span>
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-4xl max-h-[95vh] overflow-y-auto w-[95vw] sm:w-[90vw] md:w-full p-4 sm:p-6">
+            <DialogContent from="top" showCloseButton={true} className="max-w-4xl max-h-[95vh] overflow-y-auto w-[95vw] sm:w-[90vw] md:w-full p-4 sm:p-6">
               <DialogHeader className="pb-3 sm:pb-4">
                 <DialogTitle className="text-xl sm:text-2xl font-bold">{editingGoal ? "Edit Goal" : "Create New Goal"}</DialogTitle>
               </DialogHeader>
               
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 gap-1 sm:gap-1 [&>*]:min-h-[48px] sm:[&>*]:min-h-[40px] [&>*]:text-xs sm:[&>*]:text-sm [&>*]:touch-manipulation [&>*]:px-2 sm:[&>*]:px-3">
-                  <TabsTrigger value="basic" className="font-medium">Basic</TabsTrigger>
-                  <TabsTrigger value="content" className="font-medium">Content</TabsTrigger>
-                  <TabsTrigger value="schedules" className="font-medium">Schedules</TabsTrigger>
-                  <TabsTrigger value="limits" className="font-medium">Time Limits</TabsTrigger>
-                </TabsList>
+              <TabGroup value={activeTab} onChange={setActiveTab} className="w-full">
+                <TabList className="grid w-full grid-cols-2 sm:grid-cols-4 gap-1 sm:gap-1 [&>*]:min-h-[48px] sm:[&>*]:min-h-[40px] [&>*]:text-xs sm:[&>*]:text-sm [&>*]:touch-manipulation [&>*]:px-2 sm:[&>*]:px-3">
+                  <Tab value="basic" className="font-medium">Basic</Tab>
+                  <Tab value="content" className="font-medium">Content</Tab>
+                  <Tab value="schedules" className="font-medium">Schedules</Tab>
+                  <Tab value="limits" className="font-medium">Time Limits</Tab>
+                </TabList>
 
-                <TabsContent value="basic" className="space-y-5 sm:space-y-6 mt-4 sm:mt-6">
+                <TabPanels>
+                  <TabPanel value="basic" className="space-y-5 sm:space-y-6 mt-4 sm:mt-6">
                   <div className="space-y-2">
                     <Label className="text-base sm:text-lg font-semibold">Goal Title *</Label>
                     <Input
@@ -816,9 +841,9 @@ export function GoalsManager({ user, onUpdate }) {
                       className="flex-shrink-0"
                     />
                   </div>
-                </TabsContent>
+                  </TabPanel>
 
-                <TabsContent value="content" className="space-y-5 sm:space-y-6 mt-4 sm:mt-6">
+                  <TabPanel value="content" className="space-y-5 sm:space-y-6 mt-4 sm:mt-6">
                   <div className="space-y-2">
                     <Label className="text-base sm:text-lg font-semibold">Content Mode *</Label>
                     <Select
@@ -842,8 +867,8 @@ export function GoalsManager({ user, onUpdate }) {
                     <div className="space-y-2">
                       <Label className="text-base sm:text-lg font-semibold">Select Personality *</Label>
                       {famousPersonalities.length === 0 ? (
-                        <div className="mt-1 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                          <p className="text-sm sm:text-base text-yellow-800">
+                        <div className="mt-1 p-4 bg-muted border border-border rounded-lg">
+                          <p className="text-sm sm:text-base text-foreground">
                             Loading personalities...
                           </p>
                         </div>
@@ -907,8 +932,8 @@ export function GoalsManager({ user, onUpdate }) {
                     <div className="space-y-2">
                       <Label className="text-base sm:text-lg font-semibold">Select Tone *</Label>
                       {tones.length === 0 ? (
-                        <div className="mt-1 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                          <p className="text-sm sm:text-base text-yellow-800">
+                        <div className="mt-1 p-4 bg-muted border border-border rounded-lg">
+                          <p className="text-sm sm:text-base text-foreground">
                             Loading tones...
                           </p>
                         </div>
@@ -955,16 +980,16 @@ export function GoalsManager({ user, onUpdate }) {
                       <p className="text-xs sm:text-sm text-muted-foreground">Describe how you want your messages to be written</p>
                     </div>
                   )}
-                </TabsContent>
+                  </TabPanel>
 
-                <TabsContent value="schedules" className="space-y-5 sm:space-y-6 mt-4 sm:mt-6">
+                  <TabPanel value="schedules" className="space-y-5 sm:space-y-6 mt-4 sm:mt-6">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 pb-3 border-b">
                     <div>
                       <Label className="text-base sm:text-lg font-semibold">Schedules *</Label>
                       <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">Configure when emails should be sent</p>
                     </div>
                     <Button type="button" variant="outline" size="sm" onClick={handleAddSchedule} className="w-full sm:w-auto min-w-[140px]">
-                      <Plus className="h-4 w-4 sm:mr-2" />
+                      <Plus />
                       <span>Add Schedule</span>
                     </Button>
                   </div>
@@ -1126,9 +1151,9 @@ export function GoalsManager({ user, onUpdate }) {
                       </Card>
                     ))}
                   </div>
-                </TabsContent>
+                  </TabPanel>
 
-                <TabsContent value="limits" className="space-y-5 sm:space-y-6 mt-4 sm:mt-6">
+                  <TabPanel value="limits" className="space-y-5 sm:space-y-6 mt-4 sm:mt-6">
                   <Alert className="bg-blue-50 border-blue-200">
                     <Info className="h-5 w-5 text-blue-600" />
                     <AlertDescription className="text-sm sm:text-base text-blue-900">
@@ -1166,7 +1191,7 @@ export function GoalsManager({ user, onUpdate }) {
                         disabled={formData.send_time_windows.length >= 5}
                         className="w-full sm:w-auto min-w-[160px]"
                       >
-                        <Plus className="h-4 w-4 sm:mr-2" />
+                        <Plus />
                         <span>Add Time Window</span>
                       </Button>
                     </div>
@@ -1249,8 +1274,9 @@ export function GoalsManager({ user, onUpdate }) {
                       )}
                     </div>
                   </div>
-                </TabsContent>
-              </Tabs>
+                  </TabPanel>
+                </TabPanels>
+              </TabGroup>
 
               <DialogFooter className="mt-6 sm:mt-8 pt-4 border-t flex-col sm:flex-row gap-3 sm:gap-2">
                 <Button 
@@ -1267,7 +1293,7 @@ export function GoalsManager({ user, onUpdate }) {
                 >
                   {loading ? (
                     <>
-                      <Loader2 className="h-4 w-4 sm:mr-2 animate-spin" />
+                      <Loader2 className="animate-spin" />
                       <span className="sm:inline">Saving...</span>
                     </>
                   ) : editingGoal ? "Update Goal" : "Create Goal"}
@@ -1278,39 +1304,39 @@ export function GoalsManager({ user, onUpdate }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-3 sm:space-y-4 p-4 sm:p-6">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mb-3 sm:mb-6">
-          <Card>
-            <CardContent className="p-3 sm:p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs sm:text-sm text-muted-foreground">Total Goals</p>
-                  <p className="text-xl sm:text-2xl font-bold mt-1">{counts.totalGoals}</p>
+        {/* Summary Cards - Enhanced Minimalistic Design */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <Card className="border border-border/30 hover:border-border/50 hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm group">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 group-hover:bg-blue-500/15 transition-colors">
+                  <Target className="h-4 w-4 text-blue-500" />
                 </div>
-                <Target className="h-6 w-6 sm:h-8 sm:w-8 text-muted-foreground flex-shrink-0" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Goals</p>
               </div>
+              <p className="text-3xl font-bold tracking-tight text-foreground">{counts.totalGoals}</p>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-3 sm:p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs sm:text-sm text-muted-foreground">Active Goals</p>
-                  <p className="text-xl sm:text-2xl font-bold mt-1">{counts.activeGoals}</p>
+          <Card className="border border-border/30 hover:border-border/50 hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm group">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/20 group-hover:bg-green-500/15 transition-colors">
+                  <Play className="h-4 w-4 text-green-500" />
                 </div>
-                <Play className="h-6 w-6 sm:h-8 sm:w-8 text-green-500 flex-shrink-0" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active</p>
               </div>
+              <p className="text-3xl font-bold tracking-tight text-foreground">{counts.activeGoals}</p>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-3 sm:p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs sm:text-sm text-muted-foreground">Upcoming Sends</p>
-                  <p className="text-xl sm:text-2xl font-bold mt-1">{counts.upcomingSends}</p>
+          <Card className="border border-border/30 hover:border-border/50 hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm group">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20 group-hover:bg-purple-500/15 transition-colors">
+                  <Clock className="h-4 w-4 text-purple-500" />
                 </div>
-                <Clock className="h-6 w-6 sm:h-8 sm:w-8 text-blue-500 flex-shrink-0" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Upcoming</p>
               </div>
+              <p className="text-3xl font-bold tracking-tight text-foreground">{counts.upcomingSends}</p>
             </CardContent>
           </Card>
         </div>
@@ -1327,16 +1353,31 @@ export function GoalsManager({ user, onUpdate }) {
               const isActive = goal.active;
               const goalNumber = index + 1;
               
+              // Color palette for different goals
+              const colorPalette = [
+                { border: 'border-blue-500/20', bg: 'from-blue-500/5', to: 'to-blue-400/3', icon: 'bg-blue-500/10', iconBorder: 'border-blue-500/25', iconText: 'text-blue-500', numberBg: 'bg-blue-500/10', numberBorder: 'border-blue-500/30', numberText: 'text-blue-600' },
+                { border: 'border-purple-500/20', bg: 'from-purple-500/5', to: 'to-purple-400/3', icon: 'bg-purple-500/10', iconBorder: 'border-purple-500/25', iconText: 'text-purple-500', numberBg: 'bg-purple-500/10', numberBorder: 'border-purple-500/30', numberText: 'text-purple-600' },
+                { border: 'border-green-500/20', bg: 'from-green-500/5', to: 'to-green-400/3', icon: 'bg-green-500/10', iconBorder: 'border-green-500/25', iconText: 'text-green-500', numberBg: 'bg-green-500/10', numberBorder: 'border-green-500/30', numberText: 'text-green-600' },
+                { border: 'border-pink-500/20', bg: 'from-pink-500/5', to: 'to-pink-400/3', icon: 'bg-pink-500/10', iconBorder: 'border-pink-500/25', iconText: 'text-pink-500', numberBg: 'bg-pink-500/10', numberBorder: 'border-pink-500/30', numberText: 'text-pink-600' },
+                { border: 'border-cyan-500/20', bg: 'from-cyan-500/5', to: 'to-cyan-400/3', icon: 'bg-cyan-500/10', iconBorder: 'border-cyan-500/25', iconText: 'text-cyan-500', numberBg: 'bg-cyan-500/10', numberBorder: 'border-cyan-500/30', numberText: 'text-cyan-600' },
+                { border: 'border-amber-500/20', bg: 'from-amber-500/5', to: 'to-amber-400/3', icon: 'bg-amber-500/10', iconBorder: 'border-amber-500/25', iconText: 'text-amber-500', numberBg: 'bg-amber-500/10', numberBorder: 'border-amber-500/30', numberText: 'text-amber-600' },
+                { border: 'border-indigo-500/20', bg: 'from-indigo-500/5', to: 'to-indigo-400/3', icon: 'bg-indigo-500/10', iconBorder: 'border-indigo-500/25', iconText: 'text-indigo-500', numberBg: 'bg-indigo-500/10', numberBorder: 'border-indigo-500/30', numberText: 'text-indigo-600' },
+                { border: 'border-teal-500/20', bg: 'from-teal-500/5', to: 'to-teal-400/3', icon: 'bg-teal-500/10', iconBorder: 'border-teal-500/25', iconText: 'text-teal-500', numberBg: 'bg-teal-500/10', numberBorder: 'border-teal-500/30', numberText: 'text-teal-600' },
+              ];
+              const colors = colorPalette[index % colorPalette.length];
+              
               return (
-                <Card key={goal.id} className={!isActive ? "opacity-60" : ""}>
-                  <CardContent className="p-3 sm:p-4 md:p-5">
+                <Card key={goal.id} className={`border ${colors.border} bg-gradient-to-br ${colors.bg} ${colors.to} hover:shadow-md hover:${colors.border.replace('/20', '/30')} transition-all duration-300 overflow-hidden relative group ${!isActive ? "opacity-60" : ""}`}>
+                  {/* Subtle background pattern */}
+                  <div className="absolute inset-0 bg-grid-pattern opacity-[0.015]" />
+                  <CardContent className="p-3 sm:p-4 md:p-5 relative">
                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                       <div className="flex-1 min-w-0 w-full sm:w-auto">
                         {/* Title and Badges - Stack on mobile */}
                         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2 sm:mb-3">
                           <div className="flex items-center gap-2 flex-1 min-w-0 order-1 sm:order-none">
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center">
-                              <span className="text-primary font-bold text-sm">#{goalNumber}</span>
+                            <div className={`flex-shrink-0 w-8 h-8 rounded-full ${colors.numberBg} border-2 ${colors.numberBorder} flex items-center justify-center`}>
+                              <span className={`${colors.numberText} font-bold text-sm`}>#{goalNumber}</span>
                             </div>
                             <h3 className="font-semibold text-base sm:text-lg leading-snug break-words overflow-wrap-anywhere flex-1 min-w-0">{goal.title || "Untitled Goal"}</h3>
                           </div>
@@ -1392,7 +1433,7 @@ export function GoalsManager({ user, onUpdate }) {
                           )}
                           {goal.schedules && goal.schedules.some(s => s.end_date) && (
                             <div className="flex items-center gap-1 flex-shrink-0">
-                              <Calendar className="h-3.5 w-3.5 flex-shrink-0 text-orange-500" />
+                              <Calendar className="h-3.5 w-3.5 flex-shrink-0 text-foreground" />
                               <span className="whitespace-nowrap text-xs sm:text-sm">
                                 Deadline: {formatDateTimeForTimezone(
                                   goal.schedules.find(s => s.end_date)?.end_date,
@@ -1456,7 +1497,7 @@ export function GoalsManager({ user, onUpdate }) {
 
       {/* Goal History Dialog */}
       <Dialog open={selectedGoalHistory !== null} onOpenChange={(open) => !open && setSelectedGoalHistory(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent from="top" showCloseButton={true} className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Message History: {selectedGoalHistory?.title}</DialogTitle>
           </DialogHeader>

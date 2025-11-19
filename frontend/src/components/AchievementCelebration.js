@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/animate-ui/components/radix/dialog";
+import { LiquidButton as Button } from "@/components/animate-ui/components/buttons/liquid";
 import { Trophy, Sparkles, X, CheckCircle, Flame, Zap, Star, Target, Award, Mail, BookOpen, Book } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -41,7 +41,7 @@ export function AchievementCelebration({ achievements, open, onClose, onViewAchi
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md border-2 border-primary">
+      <DialogContent from="top" showCloseButton={true} className="sm:max-w-md border-2 border-primary">
         {/* Confetti Effect */}
         {showConfetti && (
           <div className="fixed inset-0 pointer-events-none z-50">
@@ -70,7 +70,7 @@ export function AchievementCelebration({ achievements, open, onClose, onViewAchi
             </div>
           </div>
           <DialogTitle className="text-3xl font-bold text-yellow-900">
-            🎉 Achievement{isMultiple ? 's' : ''} Unlocked! 🎉
+            Achievement{isMultiple ? 's' : ''} Unlocked!
           </DialogTitle>
           <DialogDescription className="text-base text-yellow-700 font-medium">
             {isMultiple 
@@ -115,7 +115,7 @@ export function AchievementCelebration({ achievements, open, onClose, onViewAchi
             onClick={onViewAchievements}
             className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
           >
-            <Trophy className="h-4 w-4 mr-2" />
+            <Trophy />
             View All Achievements
           </Button>
           <Button
@@ -123,7 +123,7 @@ export function AchievementCelebration({ achievements, open, onClose, onViewAchi
             onClick={onClose}
             className="flex-1"
           >
-            <X className="h-4 w-4 mr-2" />
+            <X />
             Close
           </Button>
         </div>

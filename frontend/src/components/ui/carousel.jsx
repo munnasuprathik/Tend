@@ -3,7 +3,7 @@ import useEmblaCarousel from "embla-carousel-react";
 import { ArrowLeft, ArrowRight } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { LiquidButton as Button } from "@/components/animate-ui/components/buttons/liquid"
 
 const CarouselContext = React.createContext(null)
 

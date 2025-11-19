@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import React from "react";
 import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/animate-ui/components/radix/dialog";
 import { ChevronLeft, ChevronRight, Mail } from "lucide-react";
 import { differenceInCalendarDays, startOfDay, format } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
@@ -189,7 +189,7 @@ export const StreakCalendar = React.memo(function StreakCalendar({
 
         {/* Date Details Dialog */}
         <Dialog open={selectedDate !== null} onOpenChange={(open) => !open && setSelectedDate(null)}>
-          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogContent from="top" showCloseButton={true} className="max-w-2xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Mail className="h-5 w-5" />

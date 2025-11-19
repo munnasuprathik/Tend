@@ -1,19 +1,20 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import "@/App.css";
 import axios from "axios";
-import { Button } from "@/components/ui/button";
+import { LiquidButton as Button } from "@/components/animate-ui/components/buttons/liquid";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TabGroup, TabList, Tab, TabPanels, TabPanel } from "@/components/animate-ui/components/headless/tabs";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
+import { NotificationList, showNotification } from "@/components/animate-ui/components/community/notification-list";
 import { SignedIn, SignedOut, SignIn, SignUp, useUser, useClerk, UserProfile } from "@clerk/clerk-react";
-import { CheckCircle, Mail, Sparkles, Clock, User, LogOut, Send, Edit, Shield, BarChart3, Users, History, TrendingUp, Globe, RefreshCw, Flame, Star, Loader2, AlertTriangle, Download, Eye, Filter, Database, Search, Calendar, Play, Megaphone, Trophy, Award, Target, Zap, BookOpen, Book, X, Satellite, Goal, Calendar as CalendarIcon, MessageSquare, Wifi, Activity, Settings, CircleDot } from "lucide-react";
+import { CheckCircle, Mail, Sparkles, Clock, User, LogOut, Send, Edit, Shield, BarChart3, Users, History, TrendingUp, Globe, RefreshCw, Flame, Star, Loader2, AlertTriangle, Download, Eye, Filter, Database, Search, Calendar, Play, Megaphone, Trophy, Award, Target, Zap, BookOpen, Book, X, Satellite, Goal, Calendar as CalendarIcon, MessageSquare, Wifi, Activity, Settings, CircleDot, Sun as Sunburst } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { MessageHistory } from "@/components/MessageHistory";
 import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
@@ -24,6 +25,7 @@ import { WeeklyMonthlyReports } from "@/components/WeeklyMonthlyReports";
 import { RealTimeAnalytics } from "@/components/RealTimeAnalytics";
 import { AdminUserDetails } from "@/components/AdminUserDetails";
 import { AchievementCelebration } from "@/components/AchievementCelebration";
+import { DashboardLayout } from "@/components/DashboardLayout";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { NetworkStatus } from "@/components/NetworkStatus";
 import { SkeletonLoader } from "@/components/SkeletonLoader";
@@ -36,6 +38,7 @@ import {
 } from "@/utils/timezoneFormatting";
 import { safeSelectValue, safePersonalityValue } from "@/utils/safeRender";
 import { sanitizeUser, sanitizeMessages, sanitizeFilter } from "@/utils/dataSanitizer";
+import { cn } from "@/lib/utils";
 
 // IST timezone constant for admin dashboard
 const ADMIN_TIMEZONE = "Asia/Kolkata";
@@ -97,66 +100,104 @@ function AuthScreen() {
   }, [isSignUp]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md shadow-lg border">
-        <CardHeader className="text-center space-y-4">
-          <div className="mx-auto h-16 w-16 rounded-2xl bg-primary flex items-center justify-center shadow-lg">
-            <Mail className="h-8 w-8 text-primary-foreground" />
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-background">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 bg-grid-pattern opacity-[0.02]" />
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5 opacity-50" />
+      
+      {/* Animated Background Orbs */}
+      <div className="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] bg-primary/10 rounded-full blur-[100px] animate-pulse" />
+      <div className="absolute bottom-[-10%] left-[-5%] w-[500px] h-[500px] bg-secondary/10 rounded-full blur-[100px] animate-pulse delay-1000" />
+
+      <div className="w-full max-w-md relative z-10">
+        {/* Logo & Header */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 mb-6 shadow-sm">
+            <Sparkles className="h-6 w-6 text-primary" />
           </div>
-          <div>
-            <CardTitle className="text-3xl font-bold">
-              {isSignUp ? "Join Tend" : "Tend"}
-            </CardTitle>
-            <CardDescription>
-              {isSignUp
-                ? "Create your account to get daily personalized motivation"
-                : "Sign in to get personalized motivation in your inbox"}
-            </CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-2">
-          {isSignUp ? (
-            <SignUp
-              routing="path"
-              path={ROUTES.SIGN_UP.path}
-              appearance={{
-                elements: {
-                  rootBox: "w-full",
-                  card: "shadow-none border-none bg-transparent",
-                  headerTitle: "hidden",
-                  headerSubtitle: "hidden",
-                  socialButtonsBlockButton: "border border-border",
-                  formButtonPrimary: "bg-primary hover:bg-primary/90 text-primary-foreground",
-                },
-                variables: {
-                  colorPrimary: "hsl(var(--primary))",
-                },
-              }}
-              afterSignUpUrl="/"
-            />
-          ) : (
-            <SignIn
-              routing="path"
-              path={ROUTES.SIGN_IN.path}
-              appearance={{
-                elements: {
-                  rootBox: "w-full",
-                  card: "shadow-none border-none bg-transparent",
-                  headerTitle: "hidden",
-                  headerSubtitle: "hidden",
-                  socialButtonsBlockButton: "border border-border",
-                  formButtonPrimary: "bg-primary hover:bg-primary/90 text-primary-foreground",
-                },
-                variables: {
-                  colorPrimary: "hsl(var(--primary))",
-                },
-              }}
-              afterSignInUrl="/"
-              afterSignUpUrl="/"
-            />
-          )}
-        </CardContent>
-      </Card>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground mb-2">
+            {isSignUp ? "Create an account" : "Welcome back"}
+          </h1>
+          <p className="text-muted-foreground text-sm">
+            {isSignUp
+              ? "Start your journey to daily inspiration"
+              : "Sign in to continue your motivation streak"}
+          </p>
+        </div>
+
+        {/* Auth Card */}
+        <Card className="border-border/30 shadow-lg bg-card/50 backdrop-blur-sm overflow-hidden">
+          <CardContent className="p-6 sm:p-8">
+            {isSignUp ? (
+              <SignUp
+                routing="path"
+                path={ROUTES.SIGN_UP.path}
+                appearance={{
+                  elements: {
+                    rootBox: "w-full",
+                    card: "shadow-none border-none bg-transparent p-0",
+                    headerTitle: "hidden",
+                    headerSubtitle: "hidden",
+                    socialButtonsBlockButton: "border border-border/50 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200",
+                    formButtonPrimary: "bg-primary hover:bg-primary/90 text-primary-foreground font-medium py-2 px-4 rounded-lg transition-all duration-200 w-full shadow-sm hover:shadow",
+                    formFieldInput: "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+                    formFieldLabel: "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 mb-2 block",
+                    identityPreviewEditButton: "text-primary hover:text-primary/80",
+                    formResendCodeLink: "text-primary hover:text-primary/80",
+                    footerActionLink: "text-primary hover:text-primary/80 font-medium hover:underline underline-offset-4",
+                    formFieldErrorText: "text-destructive text-xs mt-1 font-medium",
+                    dividerLine: "bg-border/50",
+                    dividerText: "text-muted-foreground bg-transparent px-2"
+                  },
+                  layout: {
+                    socialButtonsPlacement: "top",
+                    socialButtonsVariant: "blockButton",
+                  }
+                }}
+                afterSignUpUrl="/"
+              />
+            ) : (
+              <SignIn
+                routing="path"
+                path={ROUTES.SIGN_IN.path}
+                appearance={{
+                  elements: {
+                    rootBox: "w-full",
+                    card: "shadow-none border-none bg-transparent p-0",
+                    headerTitle: "hidden",
+                    headerSubtitle: "hidden",
+                    socialButtonsBlockButton: "border border-border/50 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200",
+                    formButtonPrimary: "bg-primary hover:bg-primary/90 text-primary-foreground font-medium py-2 px-4 rounded-lg transition-all duration-200 w-full shadow-sm hover:shadow",
+                    formFieldInput: "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+                    formFieldLabel: "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 mb-2 block",
+                    identityPreviewEditButton: "text-primary hover:text-primary/80",
+                    formResendCodeLink: "text-primary hover:text-primary/80",
+                    footerActionLink: "text-primary hover:text-primary/80 font-medium hover:underline underline-offset-4",
+                    formFieldErrorText: "text-destructive text-xs mt-1 font-medium",
+                    dividerLine: "bg-border/50",
+                    dividerText: "text-muted-foreground bg-transparent px-2"
+                  },
+                  layout: {
+                    socialButtonsPlacement: "top",
+                    socialButtonsVariant: "blockButton",
+                  }
+                }}
+                afterSignInUrl="/"
+                afterSignUpUrl="/"
+              />
+            )}
+          </CardContent>
+        </Card>
+        
+        {/* Footer Links */}
+        <div className="mt-8 text-center space-x-4 text-sm text-muted-foreground">
+          <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
+          <span>•</span>
+          <a href="#" className="hover:text-foreground transition-colors">Terms</a>
+          <span>•</span>
+          <a href="#" className="hover:text-foreground transition-colors">Help</a>
+        </div>
+      </div>
     </div>
   );
 }
@@ -203,6 +244,7 @@ function OnboardingScreen({ email, onComplete }) {
   const handleSubmitName = (e) => {
     e.preventDefault();
     if (!formData.name) {
+      showNotification({ type: 'error', message: "Please enter your name", title: "Validation Error" });
       toast.error("Please enter your name");
       return;
     }
@@ -212,6 +254,7 @@ function OnboardingScreen({ email, onComplete }) {
   const handleSubmitGoals = (e) => {
     e.preventDefault();
     if (!formData.goals) {
+      showNotification({ type: 'error', message: "Please tell us about your goals", title: "Validation Error" });
       toast.error("Please tell us about your goals");
       return;
     }
@@ -240,6 +283,7 @@ function OnboardingScreen({ email, onComplete }) {
     }
     
     if (formData.personalities.length === 0 && !value && !customValue) {
+      showNotification({ type: 'error', message: "Please add at least one personality", title: "Validation Error" });
       toast.error("Please add at least one personality");
       return;
     }
@@ -250,6 +294,7 @@ function OnboardingScreen({ email, onComplete }) {
   const handleAddPersonality = () => {
     const { type, value, customValue } = formData.currentPersonality;
     if (!value && !customValue) {
+      showNotification({ type: 'error', message: "Please select or enter a personality", title: "Validation Error" });
       toast.error("Please select or enter a personality");
       return;
     }
@@ -265,13 +310,15 @@ function OnboardingScreen({ email, onComplete }) {
       personalities: [...formData.personalities, newPersonality],
       currentPersonality: { type: "famous", value: "", customValue: "" }
     });
-    toast.success("✨ Personality Added!", {
+      showNotification({ type: 'success', message: "Personality Added!", title: "Success" });
+      toast.success("Personality Added!", {
       description: "Great choice! This personality will inspire your daily motivation!",
       duration: 3000,
     });
     
     setTimeout(() => {
-      toast.success("🎯 Keep Going!", {
+      showNotification({ type: 'success', message: "Keep Going!", title: "Personality Added" });
+      toast.success("Keep Going!", {
         description: "Add more personalities or continue to complete your setup!",
         duration: 2500,
       });
@@ -280,6 +327,7 @@ function OnboardingScreen({ email, onComplete }) {
 
   const handleFinalSubmit = async () => {
     if (formData.personalities.length === 0) {
+      showNotification({ type: 'error', message: "Please add at least one personality", title: "Validation Error" });
       toast.error("Please add at least one personality");
       return;
     }
@@ -305,34 +353,39 @@ function OnboardingScreen({ email, onComplete }) {
         user_timezone: formData.user_timezone || formData.timezone || "UTC"  // NEW: Send global timezone
       });
 
-      toast.success("🎉 Welcome to Tend!", {
+      showNotification({ type: 'success', message: "Welcome to Tend!", title: "Welcome" });
+      toast.success("Welcome to Tend!", {
         description: "You're all set! Get ready for daily motivation!",
         duration: 4000,
       });
       
       // Multiple celebratory toasts
       setTimeout(() => {
-        toast.success("🚀 Let's Begin!", {
+        showNotification({ type: 'success', message: "Let's Begin!", title: "Ready" });
+        toast.success("Let's Begin!", {
           description: "Your journey to success starts now!",
           duration: 3000,
         });
       }, 600);
       
       setTimeout(() => {
-        toast.success("💪 You've Got This!", {
+        showNotification({ type: 'success', message: "You've Got This!", title: "Motivation" });
+        toast.success("You've Got This!", {
           description: "We're here to support you every step of the way!",
           duration: 3000,
         });
       }, 1200);
       
       setTimeout(() => {
-        toast.success("📧 Check Your Inbox!", {
+        showNotification({ type: 'success', message: "Check Your Inbox!", title: "Email Sent" });
+        toast.success("Check Your Inbox!", {
           description: "Your first motivational email is coming soon!",
           duration: 3000,
         });
       }, 1800);
       onComplete(response.data.user);
     } catch (error) {
+      showNotification({ type: 'error', message: error.response?.data?.detail || "Failed to complete setup", title: "Error" });
       toast.error(error.response?.data?.detail || "Failed to complete setup");
     } finally {
       setLoading(false);
@@ -381,24 +434,34 @@ function OnboardingScreen({ email, onComplete }) {
         )}
 
         {step === 2 && (
-          <Card className="shadow-xl">
-            <CardHeader>
-              <CardTitle>Tell us about your goals</CardTitle>
-              <CardDescription>What are you working towards?</CardDescription>
+          <Card className="group hover:shadow-lg transition-all duration-200">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-muted group-hover:bg-accent transition-colors">
+                  <Target className="h-5 w-5 text-foreground" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl sm:text-2xl">Tell us about your goals</CardTitle>
+                  <CardDescription className="mt-1">What are you working towards?</CardDescription>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmitGoals} className="space-y-4">
-                <Textarea
-                  placeholder="I'm working on building my startup, learning to code, getting fit..."
-                  value={formData.goals}
-                  onChange={(e) => setFormData({...formData, goals: e.target.value})}
-                  className="min-h-32"
-                  data-testid="goals-input"
-                  required
-                />
+            <CardContent className="space-y-5">
+              <form onSubmit={handleSubmitGoals} className="space-y-5">
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">Your Goals</Label>
+                  <Textarea
+                    placeholder="I'm working on building my startup, learning to code, getting fit..."
+                    value={formData.goals}
+                    onChange={(e) => setFormData({...formData, goals: e.target.value})}
+                    className="min-h-32 resize-none"
+                    data-testid="goals-input"
+                    required
+                  />
+                </div>
                 <div className="flex gap-3">
-                  <Button type="button" variant="outline" onClick={() => setStep(1)} className="flex-1">Back</Button>
-                  <Button type="submit" className="flex-1" data-testid="goals-next-btn">Continue</Button>
+                  <Button type="button" variant="outline" onClick={() => setStep(1)} className="flex-1 h-11">Back</Button>
+                  <Button type="submit" className="flex-1 h-11" data-testid="goals-next-btn">Continue</Button>
                 </div>
               </form>
             </CardContent>
@@ -406,12 +469,19 @@ function OnboardingScreen({ email, onComplete }) {
         )}
 
         {step === 3 && (
-          <Card className="shadow-xl">
-            <CardHeader>
-              <CardTitle>Choose Your Inspiration Style</CardTitle>
-              <CardDescription>Add one or more personalities to rotate through</CardDescription>
+          <Card className="group hover:shadow-lg transition-all duration-200">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-muted group-hover:bg-accent transition-colors">
+                  <Users className="h-5 w-5 text-foreground" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl sm:text-2xl">Choose Your Inspiration Style</CardTitle>
+                  <CardDescription className="mt-1">Add one or more personalities to rotate through</CardDescription>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-5">
               <div className="space-y-6">
                 {/* Added Personalities */}
                 {formData.personalities.length > 0 && (
@@ -524,15 +594,19 @@ function OnboardingScreen({ email, onComplete }) {
         )}
 
         {step === 4 && (
-          <Card className="shadow-xl">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Globe className="h-5 w-5" />
-                Set Your Timezone
-              </CardTitle>
-              <CardDescription>This will be used for all dates and times across your dashboard</CardDescription>
+          <Card className="group hover:shadow-lg transition-all duration-200">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-muted group-hover:bg-accent transition-colors">
+                  <Globe className="h-5 w-5 text-foreground" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl sm:text-2xl">Set Your Timezone</CardTitle>
+                  <CardDescription className="mt-1">This will be used for all dates and times across your dashboard</CardDescription>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-5">
               <div>
                 <Label className="flex items-center gap-2 mb-2">
                   <Globe className="h-4 w-4" />
@@ -566,20 +640,27 @@ function OnboardingScreen({ email, onComplete }) {
               </div>
 
               <div className="flex gap-3 pt-4">
-                <Button type="button" variant="outline" onClick={() => setStep(3)} className="flex-1">Back</Button>
-                <Button onClick={() => setStep(5)} className="flex-1">Continue</Button>
+                <Button type="button" variant="outline" onClick={() => setStep(3)} className="flex-1 h-11">Back</Button>
+                <Button onClick={() => setStep(5)} className="flex-1 h-11">Continue</Button>
               </div>
             </CardContent>
           </Card>
         )}
 
         {step === 5 && (
-          <Card className="shadow-xl">
-            <CardHeader>
-              <CardTitle>Schedule Your Inspiration</CardTitle>
-              <CardDescription>When should we send your messages?</CardDescription>
+          <Card className="group hover:shadow-lg transition-all duration-200">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-muted group-hover:bg-accent transition-colors">
+                  <CalendarIcon className="h-5 w-5 text-foreground" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl sm:text-2xl">Schedule Your Inspiration</CardTitle>
+                  <CardDescription className="mt-1">When should we send your messages?</CardDescription>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-5">
               <div>
                 <Label>Frequency</Label>
                 <Select value={safeSelectValue(formData.frequency, 'daily')} onValueChange={(value) => setFormData({...formData, frequency: value})}>
@@ -663,9 +744,16 @@ function OnboardingScreen({ email, onComplete }) {
               </div>
 
               <div className="flex gap-3 pt-4">
-                <Button type="button" variant="outline" onClick={() => setStep(4)} className="flex-1">Back</Button>
-                <Button onClick={handleFinalSubmit} disabled={loading} className="flex-1" data-testid="onboarding-finish-btn">
-                  {loading ? "Setting Up..." : "Complete Setup"}
+                <Button type="button" variant="outline" onClick={() => setStep(4)} className="flex-1 h-11">Back</Button>
+                <Button onClick={handleFinalSubmit} disabled={loading} className="flex-1 h-11" data-testid="onboarding-finish-btn">
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Setting Up...
+                    </>
+                  ) : (
+                    "Complete Setup"
+                  )}
                 </Button>
               </div>
             </CardContent>
@@ -712,7 +800,7 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
   const userTimezoneDisplay = getDisplayTimezone(userTimezone);
   const schedulePaused = user.schedule?.paused;
   const statusLabel = schedulePaused ? "Paused" : user.active ? "Active" : "Inactive";
-  const statusColor = schedulePaused ? "bg-yellow-400" : user.active ? "bg-green-500" : "bg-gray-400";
+  const statusColor = schedulePaused ? "bg-muted-foreground" : user.active ? "bg-foreground" : "bg-muted";
 
   const handleUserStateUpdate = useCallback((updatedUser) => {
     // Sanitize user data before updating state
@@ -722,6 +810,7 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
       setRefreshKey((prev) => prev + 1);
     } else {
       console.error('Failed to sanitize user data');
+      showNotification({ type: 'error', message: 'Invalid user data received', title: "Error" });
       toast.error('Invalid user data received');
     }
   }, [onUserUpdate]);
@@ -792,19 +881,22 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
         handleUserStateUpdate(sanitizedUser);
       }
       setEditMode(false);
-      toast.success("✅ Settings Updated!", {
+      showNotification({ type: 'success', message: "Settings Updated!", title: "Success" });
+      toast.success("Settings Updated!", {
         description: "Your preferences have been saved successfully!",
         duration: 3000,
       });
       
       // Additional celebratory toast
       setTimeout(() => {
-        toast.success("🎯 All Set!", {
+        showNotification({ type: 'success', message: "All Set!", title: "Complete" });
+        toast.success("All Set!", {
           description: "Your motivational emails will reflect these changes!",
           duration: 2500,
         });
       }, 500);
     } catch (error) {
+      showNotification({ type: 'error', message: "Failed to update settings", title: "Error" });
       toast.error("Failed to update settings");
     } finally {
       setLoading(false);
@@ -817,6 +909,7 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
       // Get current personality from user
       const personalities = user.personalities || [];
       if (personalities.length === 0) {
+        showNotification({ type: 'error', message: "No personalities configured", title: "Error" });
         toast.error("No personalities configured");
         setLoading(false);
         return;
@@ -835,21 +928,25 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
       });
       setPreviewMessage(response.data.message);
       if (response.data.used_fallback) {
+        showNotification({ type: 'warning', message: "Preview generated using a backup message while the AI is busy.", title: "Notice" });
         toast.warning("Preview generated using a backup message while the AI is busy.");
       } else {
-        toast.success("✨ Preview Generated!", {
+        showNotification({ type: 'success', message: "Preview Generated!", title: "Success" });
+        toast.success("Preview Generated!", {
           description: "Here's a sneak peek of your personalized motivation!",
           duration: 3000,
         });
         
         setTimeout(() => {
-          toast.success("📝 Ready to Send!", {
+          showNotification({ type: 'success', message: "Ready to Send!", title: "Ready" });
+          toast.success("Ready to Send!", {
             description: "This is how your email will look. Want to send it now?",
             duration: 3000,
           });
         }, 500);
       }
     } catch (error) {
+      showNotification({ type: 'error', message: "Failed to generate preview", title: "Error" });
       toast.error("Failed to generate preview");
     } finally {
       setLoading(false);
@@ -860,27 +957,31 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
     setLoading(true);
     try {
       await axios.post(`${API}/send-now/${user.email}`);
-      toast.success("📧 Email Sent!", {
+      showNotification({ type: 'success', message: "Email Sent!", title: "Success" });
+      toast.success("Email Sent!", {
         description: "Check your inbox for your personalized motivation!",
         duration: 3000,
       });
       
       // Additional celebratory toasts
       setTimeout(() => {
-        toast.success("💪 You've Got This!", {
+        showNotification({ type: 'success', message: "You've Got This!", title: "Motivation" });
+        toast.success("You've Got This!", {
           description: "Your motivation is on its way. Keep pushing forward!",
           duration: 3000,
         });
       }, 600);
       
       setTimeout(() => {
-        toast.success("🔥 Stay Strong!", {
+        showNotification({ type: 'success', message: "Stay Strong!", title: "Motivation" });
+        toast.success("Stay Strong!", {
           description: "Every step counts. You're doing amazing!",
           duration: 2500,
         });
       }, 1200);
       await refreshUserData();
     } catch (error) {
+      showNotification({ type: 'error', message: "Failed to send email", title: "Error" });
       toast.error("Failed to send email");
     } finally {
       setLoading(false);
@@ -894,6 +995,7 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
       setAchievements(response.data);
     } catch (error) {
       console.error("Failed to fetch achievements:", error);
+      showNotification({ type: 'error', message: "Failed to load achievements", title: "Error" });
       toast.error("Failed to load achievements");
     } finally {
       setAchievementsLoading(false);
@@ -999,8 +1101,10 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
     return <IconComponent className="h-6 w-6" />;
   };
 
+  const [activeTab, setActiveTab] = useState("overview");
+
   return (
-    <div className="min-h-screen p-3 sm:p-4 md:p-8">
+    <>
       {/* Achievement Celebration Modal */}
       <AchievementCelebration
         achievements={newAchievements}
@@ -1009,277 +1113,541 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
         onViewAchievements={handleViewAchievements}
       />
       
-      <div className="max-w-5xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-primary flex items-center justify-center shadow-lg flex-shrink-0">
-              <User className="h-5 w-5 sm:h-6 sm:w-6 text-primary-foreground" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold flex flex-wrap items-center gap-1 sm:gap-2">
-                <span className="break-words">Welcome back, {user.name}!</span>
-                <Sparkles className="h-5 w-5 sm:h-6 sm:w-6 text-accent flex-shrink-0" />
-              </h1>
-              <p className="text-muted-foreground mt-1 flex items-center gap-1 text-sm sm:text-base">
-                <Mail className="h-3 w-3 flex-shrink-0" />
-                <span className="truncate">{user.email}</span>
-              </p>
-            </div>
-          </div>
-          <Button variant="outline" onClick={onLogout} data-testid="logout-btn" className="w-full sm:w-auto">
-            <LogOut className="h-4 w-4 mr-2" />
-            Logout
-          </Button>
-        </div>
-
-        <Tabs defaultValue="overview" className="space-y-4 sm:space-y-6">
-          <div className="overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0 scrollbar-hide">
-            <TabsList className="inline-flex w-full sm:grid sm:grid-cols-5 min-w-max sm:min-w-0 [&>*]:bg-transparent [&>*]:text-foreground [&>*[data-state=active]]:bg-primary [&>*[data-state=active]]:text-primary-foreground [&>*[data-state=active]]:shadow-sm [&>*]:min-h-[44px] sm:[&>*]:min-h-0 [&>*]:touch-manipulation [&>*:hover]:bg-accent">
-              <TabsTrigger value="overview" className="flex-shrink-0">
-                <BarChart3 className="h-4 w-4 mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Overview</span>
-                <span className="sm:hidden">Overview</span>
-              </TabsTrigger>
-              <TabsTrigger value="analytics" data-testid="analytics-tab" className="flex-shrink-0">
-                <TrendingUp className="h-4 w-4 mr-1 sm:mr-2" />
-                Analytics
-              </TabsTrigger>
-              <TabsTrigger value="achievements" data-testid="achievements-tab" className="flex-shrink-0">
-                <Trophy className="h-4 w-4 mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Achievements</span>
-                <span className="sm:hidden">Awards</span>
-              </TabsTrigger>
-              <TabsTrigger value="history" data-testid="history-tab" className="flex-shrink-0">
-                <History className="h-4 w-4 mr-1 sm:mr-2" />
-                History
-              </TabsTrigger>
-              <TabsTrigger value="settings" className="flex-shrink-0">
-                <Settings className="h-4 w-4 mr-1 sm:mr-2" />
-                Settings
-              </TabsTrigger>
-            </TabsList>
-          </div>
-
-          <TabsContent value="overview" className="space-y-4 sm:space-y-6">
-            {/* Quick Stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Activity className="h-4 w-4" />
-                    Email Notifications
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-2">
-                    <div className={`h-3 w-3 rounded-full ${statusColor}`} />
-                    <span className="text-2xl font-bold">{statusLabel}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {user.active ? "Receiving emails" : "Emails disabled"}
+      <DashboardLayout
+        user={user}
+        onLogout={onLogout}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      >
+        <TabGroup value={activeTab} onChange={setActiveTab} className="space-y-6">
+          <TabPanels>
+            <TabPanel value="overview" className="space-y-6 sm:space-y-8">
+            {/* Welcome Header - Only on Overview */}
+            <div className="mb-6 sm:mb-8">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground mb-1.5">
+                    Welcome back, {user?.name?.split(' ')[0] || "User"}
+                  </h1>
+                  <p className="text-sm text-muted-foreground font-normal flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span className="truncate">{user?.email || ""}</span>
                   </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Hero Section - Streak & Quick Stats */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Hero Streak Card - Enhanced with Color */}
+              <Card className="lg:col-span-2 border border-orange-500/20 bg-gradient-to-br from-orange-500/5 via-amber-500/3 to-transparent shadow-sm hover:shadow-md hover:border-orange-500/30 transition-all duration-300 overflow-hidden relative group">
+                {/* Subtle background elements */}
+                <div className="absolute inset-0 bg-grid-pattern opacity-[0.02]" />
+                <div className="absolute inset-0 bg-gradient-to-br from-orange-500/8 via-amber-500/4 to-transparent opacity-50 group-hover:opacity-70 transition-opacity duration-300" />
+                
+                <CardContent className="p-6 sm:p-8 relative">
+                  {/* Header */}
+                  <div className="mb-8">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 rounded-lg bg-gradient-to-br from-orange-500/20 to-amber-500/15 border border-orange-500/25 group-hover:from-orange-500/25 group-hover:to-amber-500/20 transition-all duration-300 shadow-sm shadow-orange-500/10 flex-shrink-0">
+                        <Flame className="h-4.5 w-4.5 text-orange-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-xs font-semibold text-orange-600/80 dark:text-orange-400/80 uppercase tracking-wider mb-1">Current Streak</h3>
+                        <p className="text-xs text-muted-foreground font-normal leading-relaxed">Consecutive days of motivation</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Streak Number Display */}
+                  <div className="flex items-end gap-3 mb-8">
+                    <div className="relative">
+                      <p className="text-6xl sm:text-7xl font-bold tracking-tighter leading-none bg-gradient-to-br from-orange-600 via-orange-500 to-amber-500 bg-clip-text text-transparent">
+                        {user.streak_count || 0}
+                      </p>
+                      {/* Pulse indicator - positioned at top-right */}
+                      <div className="absolute top-2 right-2 h-3 w-3 rounded-full bg-orange-500 animate-pulse shadow-lg shadow-orange-500/50 z-10" />
+                      <div className="absolute top-2 right-2 h-3 w-3 rounded-full bg-orange-500/30 animate-ping z-10" />
+                    </div>
+                    <p className="text-base font-medium text-orange-600/70 dark:text-orange-400/70 mb-1">days</p>
+                  </div>
+                  
+                  {/* Milestone Progress */}
+                  <div className="pt-5 border-t border-orange-500/15">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs text-orange-600/70 dark:text-orange-400/70 font-medium">Next milestone</span>
+                      <span className="text-xs font-semibold text-orange-600 dark:text-orange-400">
+                        {user.streak_count < 7 ? 7 : user.streak_count < 30 ? 30 : user.streak_count < 100 ? 100 : '∞'} days
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-orange-500/10 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-orange-500 via-orange-400 to-amber-500 rounded-full transition-all duration-700 ease-out shadow-sm shadow-orange-500/30"
+                        style={{ 
+                          width: `${Math.min(100, user.streak_count < 7 
+                            ? ((user.streak_count || 0) / 7) * 100 
+                            : user.streak_count < 30 
+                            ? (((user.streak_count || 0) - 7) / 23) * 100 
+                            : user.streak_count < 100
+                            ? (((user.streak_count || 0) - 30) / 70) * 100
+                            : 100)}%` 
+                        }}
+                      />
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    Next Email
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {goalsLoading ? (
-                    <div className="flex items-center justify-center py-2">
-                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              {/* Quick Stats Summary - Refined */}
+              <div className="space-y-4">
+                <Card className="border border-border/30 hover:border-border/50 hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm group">
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-2.5 mb-4">
+                      <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 group-hover:bg-blue-500/15 transition-colors">
+                        <Mail className="h-4 w-4 text-blue-500" />
+                      </div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Messages</p>
                     </div>
-                  ) : (() => {
-                    // Combine all goals and find the next upcoming email
-                    const allGoals = [...(goals || [])];
-                    if (user.goals && typeof user.goals === 'string' && user.goals.trim()) {
-                      allGoals.unshift({
-                        id: 'main_goal',
-                        title: user.goals.split('\n')[0].substring(0, 50) || 'My Main Goal',
-                        active: !user.schedule?.paused,
-                        next_sends: user.schedule && !user.schedule.paused ? [(() => {
-                          // Calculate next send time for main goal
-                          const schedule = user.schedule;
-                          const timezone = schedule.timezone || 'UTC';
-                          const time = schedule.times?.[0] || schedule.time || '09:00';
-                          const [hours, minutes] = time.split(':').map(Number);
-                          
-                          const now = new Date();
-                          const tzNow = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
-                          const today = new Date(tzNow);
-                          today.setHours(hours, minutes, 0, 0);
-                          
-                          if (today <= tzNow) {
-                            today.setDate(today.getDate() + 1);
-                          }
-                          
-                          return today.toISOString();
-                        })()] : [],
-                        schedules: user.schedule ? [{
-                          timezone: user.schedule.timezone || 'UTC',
-                          active: !user.schedule.paused
-                        }] : []
-                      });
+                    <p className="text-3xl font-bold tracking-tight text-foreground mb-3">
+                      {user.total_messages_received || 0}
+                    </p>
+                    <div className="w-full h-1.5 bg-muted/40 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-blue-500 via-blue-400 to-blue-300 rounded-full transition-all duration-700 ease-out shadow-sm"
+                        style={{ width: `${Math.min(100, ((user.total_messages_received || 0) / 100) * 100)}%` }}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border border-border/30 hover:border-border/50 hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm group">
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-2.5 mb-4">
+                      <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/20 group-hover:bg-green-500/15 transition-colors">
+                        <Target className="h-4 w-4 text-green-500" />
+                      </div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Goals</p>
+                    </div>
+                    <p className="text-3xl font-bold tracking-tight text-foreground mb-2">
+                      {(() => {
+                        // Count active goals from goals array
+                        const activeFromGoals = goals ? goals.filter(g => g.active !== false).length : 0;
+                        // Check if main goal exists and is active (not paused)
+                        const mainGoalActive = user.goals && typeof user.goals === 'string' && user.goals.trim() && !user.schedule?.paused ? 1 : 0;
+                        return activeFromGoals + mainGoalActive;
+                      })()}
+                    </p>
+                    <p className="text-xs text-muted-foreground font-normal">
+                      {(() => {
+                        const totalFromGoals = goals ? goals.length : 0;
+                        const hasMainGoal = user.goals && typeof user.goals === 'string' && user.goals.trim() ? 1 : 0;
+                        const total = totalFromGoals + hasMainGoal;
+                        return `${total} total ${total === 1 ? 'goal' : 'goals'}`;
+                      })()}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* Quick Actions Card - Refined */}
+            <Card className="border border-border/30 hover:border-border/50 hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+                    <Zap className="h-4 w-4 text-primary" />
+                  </div>
+                  <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                    Quick Actions
+                  </CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <Button 
+                    size="sm" 
+                    onClick={handleSendNow} 
+                    disabled={loading} 
+                    className="w-full justify-center gap-2 h-10 font-medium shadow-sm hover:shadow-md transition-all"
+                  >
+                    <Send className="h-4 w-4" />
+                    Send Now
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={handleGeneratePreview} 
+                    disabled={loading} 
+                    className="w-full justify-center gap-2 h-10 font-medium border-border/40 hover:border-border hover:bg-background/50 transition-all"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Generate Preview
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => setActiveTab("analytics")} 
+                    className="w-full justify-center gap-2 h-10 font-medium border-border/40 hover:border-border hover:bg-background/50 transition-all"
+                  >
+                    <TrendingUp className="h-4 w-4" />
+                    View Analytics
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Quick Status Cards - Enhanced Design */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Email Status */}
+              <Card className="border border-border/30 hover:border-border/50 hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm group">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className={cn(
+                      "p-2 rounded-lg transition-all duration-300",
+                      user?.active && !user?.schedule?.paused 
+                        ? "bg-green-500/10 group-hover:bg-green-500/15" 
+                        : "bg-muted/50"
+                    )}>
+                      <Activity className={cn(
+                        "h-4 w-4 transition-colors",
+                        user?.active && !user?.schedule?.paused 
+                          ? "text-green-500" 
+                          : "text-muted-foreground"
+                      )} />
+                    </div>
+                    <div className={cn(
+                      "h-2.5 w-2.5 rounded-full mt-1 transition-all duration-300",
+                      user?.active && !user?.schedule?.paused 
+                        ? "bg-green-500 shadow-lg shadow-green-500/50 animate-pulse" 
+                        : "bg-muted-foreground"
+                    )} />
+                  </div>
+                  <div className="mb-3">
+                    <p className={cn(
+                      "text-2xl font-bold tracking-tight mb-1 transition-colors",
+                      user?.active && !user?.schedule?.paused 
+                        ? "text-green-600" 
+                        : "text-foreground"
+                    )}>
+                      {user?.active && !user?.schedule?.paused ? "Active" : "Paused"}
+                    </p>
+                    <p className="text-xs text-muted-foreground font-normal">
+                      Email notifications
+                    </p>
+                  </div>
+                  {/* Schedule frequency indicator */}
+                  <div className="pt-3 border-t border-border/20">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                        Frequency
+                      </span>
+                      <span className="text-xs font-semibold text-foreground capitalize">
+                        {user?.schedule?.frequency || 'daily'}
+                      </span>
+                    </div>
+                    {user?.schedule?.times && user.schedule.times.length > 0 && (
+                      <div className="mt-2 flex items-center gap-1.5">
+                        <Clock className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground font-normal">
+                          {user.schedule.times.length} {user.schedule.times.length === 1 ? 'time' : 'times'} per day
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Next Email */}
+              {(() => {
+                // Calculate next email info similar to AnalyticsDashboard
+                if (!user?.schedule || !user?.active) return null;
+                
+                const schedule = user.schedule;
+                const frequency = schedule.frequency || 'daily';
+                const times = schedule.times || (schedule.time ? [schedule.time] : ['09:00']);
+                const lastEmailSent = user.last_email_sent;
+                
+                try {
+                  const now = new Date();
+                  const [hours, minutes] = times[0].split(':').map(Number);
+                  
+                  let nextSend = new Date();
+                  nextSend.setHours(hours, minutes, 0, 0);
+                  
+                  if (frequency === 'daily') {
+                    if (nextSend <= now || (lastEmailSent && new Date(lastEmailSent).toDateString() === now.toDateString())) {
+                      nextSend.setDate(nextSend.getDate() + 1);
                     }
-                    
-                    // Find the earliest next send across all active goals
-                    let nextEmail = null;
-                    let nextGoal = null;
-                    
-                    for (const goal of allGoals) {
-                      if (!goal.active) continue;
-                      
-                      if (goal.next_sends && goal.next_sends.length > 0) {
-                        for (const sendTime of goal.next_sends) {
-                          const sendDate = new Date(sendTime);
-                          if (!nextEmail || sendDate < nextEmail) {
-                            nextEmail = sendDate;
-                            nextGoal = goal;
-                          }
-                        }
-                      }
-                    }
-                    
-                    if (nextEmail && nextGoal) {
-                      const now = new Date();
-                      const hoursUntil = Math.max(0, Math.round((nextEmail - now) / (1000 * 60 * 60) * 10) / 10);
-                      const minutesUntil = Math.max(0, Math.round((nextEmail - now) / (1000 * 60)));
-                      
-                      // Format display
-                      let timeDisplay;
-                      if (hoursUntil >= 24) {
-                        const days = Math.floor(hoursUntil / 24);
-                        const hours = Math.floor(hoursUntil % 24);
-                        timeDisplay = days === 1 ? `${days} day` : `${days} days`;
-                        if (hours > 0) {
-                          timeDisplay += ` ${hours}h`;
-                        }
-                      } else if (hoursUntil >= 1) {
-                        timeDisplay = hoursUntil === 1 ? '1 hour' : `${Math.floor(hoursUntil)}h`;
-                        const mins = minutesUntil % 60;
-                        if (mins > 0 && hoursUntil < 2) {
-                          timeDisplay += ` ${mins}m`;
-                        }
-                      } else {
-                        timeDisplay = minutesUntil === 1 ? '1 minute' : `${minutesUntil}m`;
-                      }
-                      
-                      return (
+                  } else if (frequency === 'weekly') {
+                    const daysUntilNext = (7 - now.getDay() + 1) % 7 || 7;
+                    nextSend.setDate(nextSend.getDate() + daysUntilNext);
+                  } else if (frequency === 'monthly') {
+                    nextSend.setMonth(nextSend.getMonth() + 1);
+                  }
+                  
+                  const diffMs = nextSend - now;
+                  const diffMins = Math.floor(diffMs / 60000);
+                  const diffHours = Math.floor(diffMins / 60);
+                  const diffDays = Math.floor(diffHours / 24);
+                  
+                  let timeDisplay = '';
+                  if (diffDays > 0) {
+                    timeDisplay = `${diffDays}d`;
+                  } else if (diffHours > 0) {
+                    timeDisplay = `${diffHours}h`;
+                  } else {
+                    timeDisplay = `${diffMins}m`;
+                  }
+                  
+                  const goals = typeof user.goals === 'string' ? user.goals : '';
+                  const goalPreview = goals ? goals.split('\n')[0].substring(0, 30) + (goals.length > 30 ? '...' : '') : 'Your goals';
+                  
+                  return (
+                    <Card className="border border-border/30 hover:border-border/50 hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm group">
+                      <CardContent className="p-5">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="p-2 rounded-lg bg-blue-500/10 group-hover:bg-blue-500/15 transition-colors">
+                            <Clock className="h-4 w-4 text-blue-500" />
+                          </div>
+                        </div>
                         <div>
-                          <p className="text-2xl font-bold">{timeDisplay}</p>
-                          <p className="text-sm text-muted-foreground mt-1 truncate">
-                            {nextGoal.title}
+                          <p className="text-2xl font-semibold tracking-tight text-foreground mb-1">
+                            {timeDisplay}
+                          </p>
+                          <p className="text-xs text-muted-foreground font-normal line-clamp-1">
+                            {goalPreview}
                           </p>
                         </div>
-                      );
-                    }
-                    
-                    // No upcoming emails
-                    const activeGoals = allGoals.filter(g => g.active).length;
-                    return (
-                      <div>
-                        <p className="text-sm text-muted-foreground">No upcoming emails</p>
-                        {activeGoals > 0 && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {activeGoals} active {activeGoals === 1 ? 'goal' : 'goals'}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </CardContent>
-              </Card>
+                        {/* Countdown indicator */}
+                        <div className="mt-3 pt-3 border-t border-border/20">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1 bg-muted/30 rounded-full overflow-hidden">
+                              <div className="h-full bg-blue-500 rounded-full animate-pulse" style={{ width: '60%' }} />
+                            </div>
+                            <span className="text-[10px] text-muted-foreground font-medium">Soon</span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                } catch (error) {
+                  return null;
+                }
+              })()}
 
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Trophy className="h-4 w-4" />
-                    Highest Achievement
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {achievementsLoading ? (
+              {/* Achievement */}
+              {achievementsLoading ? (
+                <Card className="border border-border/30 bg-card/50 backdrop-blur-sm">
+                  <CardContent className="p-5">
                     <div className="flex items-center justify-center py-2">
                       <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                     </div>
-                  ) : achievements.unlocked && achievements.unlocked.length > 0 ? (
-                    (() => {
-                      // Get the highest achievement (top 1)
-                      const highestAchievement = achievements.unlocked
-                        .sort((a, b) => {
-                          // Sort by priority (higher first), then by unlocked_at (most recent first)
-                          const priorityDiff = (b.priority || 0) - (a.priority || 0);
-                          if (priorityDiff !== 0) return priorityDiff;
-                          const aDate = a.unlocked_at ? new Date(a.unlocked_at).getTime() : 0;
-                          const bDate = b.unlocked_at ? new Date(b.unlocked_at).getTime() : 0;
-                          return bDate - aDate;
-                        })[0];
-                      
-                      return (
-                        <div className="flex items-center gap-3">
-                          <div className="flex-shrink-0 h-10 w-10 rounded-md bg-muted flex items-center justify-center">
+                  </CardContent>
+                </Card>
+              ) : achievements.unlocked && achievements.unlocked.length > 0 ? (
+                (() => {
+                  const highestAchievement = achievements.unlocked
+                    .sort((a, b) => {
+                      const priorityDiff = (b.priority || 0) - (a.priority || 0);
+                      if (priorityDiff !== 0) return priorityDiff;
+                      const aDate = a.unlocked_at ? new Date(a.unlocked_at).getTime() : 0;
+                      const bDate = b.unlocked_at ? new Date(b.unlocked_at).getTime() : 0;
+                      return bDate - aDate;
+                    })[0];
+                  
+                  return (
+                    <Card className="border border-border/30 hover:border-border/50 hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm group">
+                      <CardContent className="p-5">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="p-2 rounded-lg bg-amber-500/10 group-hover:bg-amber-500/15 transition-colors">
+                            <Trophy className="h-4 w-4 text-amber-500" />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="p-2.5 rounded-xl bg-gradient-to-br from-amber-500/10 to-amber-400/5 border border-amber-500/20 flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
                             {getAchievementIcon(highestAchievement.icon_name || "Trophy")}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold truncate">{highestAchievement.name}</p>
-                            {highestAchievement.category && (
-                              <p className="text-xs text-muted-foreground capitalize mt-0.5">{highestAchievement.category}</p>
-                            )}
+                            <p className="text-sm font-semibold text-foreground truncate mb-0.5">
+                              {highestAchievement.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {highestAchievement.category || "Achievement"}
+                            </p>
                           </div>
                         </div>
-                      );
-                    })()
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No achievements yet</p>
-                  )}
-                </CardContent>
-              </Card>
+                        {/* Achievement progress */}
+                        <div className="pt-3 border-t border-border/20">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                              Progress
+                            </span>
+                            <span className="text-xs font-semibold text-foreground">
+                              {achievements.total_unlocked || 0} / {achievements.total_available || 0}
+                            </span>
+                          </div>
+                          <div className="w-full h-1 bg-muted/30 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full transition-all duration-500"
+                              style={{ 
+                                width: `${achievements.total_available > 0 
+                                  ? Math.round((achievements.total_unlocked / achievements.total_available) * 100) 
+                                  : 0}%` 
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })()
+              ) : (
+                <Card className="border border-border/30 bg-card/50 backdrop-blur-sm">
+                  <CardContent className="p-5">
+                    <div className="text-center py-4">
+                      <Trophy className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">No achievements yet</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
 
-            {/* Goals Manager */}
-            <GoalsManager user={user} onUpdate={handleUserStateUpdate} />
+            {/* Section Header */}
+            <div className="flex items-center gap-3 pt-2">
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
+              <div className="flex items-center gap-2 px-4">
+                <Target className="h-4 w-4 text-muted-foreground" />
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Goals & Schedule</h2>
+              </div>
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
+            </div>
 
-            {/* Preview & Send */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2">
-                  <span className="flex items-center gap-2">
-                    <Mail className="h-5 w-5 text-indigo-600 flex-shrink-0" />
-                    <span className="text-base sm:text-lg">Preview Your Next Message</span>
-                  </span>
+            {/* Goals Manager - Enhanced Container */}
+            <div className="relative">
+              {/* Subtle background gradient */}
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/2 via-transparent to-blue-500/2 rounded-2xl -z-10 opacity-50" />
+              <div className="relative bg-card/40 backdrop-blur-sm border border-border/30 rounded-2xl p-6 sm:p-8 hover:border-border/50 transition-all duration-300">
+                {/* Goals Manager Component */}
+                <GoalsManager user={user} onUpdate={handleUserStateUpdate} />
+              </div>
+            </div>
+
+            {/* Section Header */}
+            <div className="flex items-center gap-3 pt-2">
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
+              <div className="flex items-center gap-2 px-4">
+                <Sparkles className="h-4 w-4 text-muted-foreground" />
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Message Preview</h2>
+              </div>
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
+            </div>
+
+            {/* Preview & Send - Enhanced Minimalistic Design */}
+            <Card className="border border-border/30 hover:border-border/50 hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm overflow-hidden relative group">
+              {/* Subtle background gradient */}
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/2 via-transparent to-blue-500/2 opacity-40 group-hover:opacity-60 transition-opacity duration-300" />
+              
+              <CardHeader className="pb-4 relative">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10 border border-primary/15 group-hover:bg-primary/15 transition-colors duration-300">
+                      <Mail className="h-4.5 w-4.5 text-primary" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base sm:text-lg font-semibold">Preview Your Next Message</CardTitle>
+                      <p className="text-xs text-muted-foreground mt-0.5 font-normal">See what your next motivational email will look like</p>
+                    </div>
+                  </div>
                   <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                    <Button size="sm" variant="outline" onClick={handleGeneratePreview} disabled={loading} className="w-full sm:w-auto">
-                      <Sparkles className="h-4 w-4 mr-2" />
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      onClick={handleGeneratePreview} 
+                      disabled={loading} 
+                      className="w-full sm:w-auto border-border/40 hover:border-border hover:bg-background/50 transition-all duration-200"
+                    >
+                      <Sparkles className="h-4 w-4 mr-1.5" />
                       Generate Preview
                     </Button>
-                    <Button size="sm" onClick={handleSendNow} disabled={loading} data-testid="send-now-btn" className="w-full sm:w-auto">
-                      <Send className="h-4 w-4 mr-2" />
+                    <Button 
+                      size="sm" 
+                      onClick={handleSendNow} 
+                      disabled={loading} 
+                      data-testid="send-now-btn" 
+                      className="w-full sm:w-auto shadow-sm hover:shadow-md transition-all duration-200"
+                    >
+                      <Send className="h-4 w-4 mr-1.5" />
                       Send Now
                     </Button>
                   </div>
-                </CardTitle>
+                </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="relative">
                 {previewMessage ? (
-                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-lg">
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{previewMessage}</p>
+                  <div className="bg-gradient-to-br from-muted/40 to-muted/20 border border-border/30 p-6 sm:p-8 rounded-xl relative overflow-hidden">
+                    {/* Subtle pattern */}
+                    <div className="absolute inset-0 bg-grid-pattern opacity-[0.015]" />
+                    
+                    <div className="relative">
+                      {/* Preview header */}
+                      <div className="flex items-center gap-2.5 mb-4 pb-4 border-b border-border/20">
+                        <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-500/50" />
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Generated Preview</span>
+                        <div className="ml-auto">
+                          <div className="h-1.5 w-12 bg-primary/20 rounded-full overflow-hidden">
+                            <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: '60%' }} />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Message content */}
+                      <div className="prose prose-sm max-w-none">
+                        <p className="text-sm sm:text-base leading-relaxed whitespace-pre-wrap text-foreground font-normal">
+                          {previewMessage}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 ) : (
-                  <p className="text-muted-foreground text-center py-8">Click "Generate Preview" to see a sample message</p>
+                  <div className="text-center py-16 sm:py-20">
+                    <div className="relative inline-block mb-5">
+                      <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-primary/8 to-primary/3 border border-primary/15 flex items-center justify-center mx-auto group-hover:scale-105 transition-transform duration-300 shadow-sm">
+                        <Mail className="h-10 w-10 text-primary/50" />
+                      </div>
+                      {/* Subtle glow effect */}
+                      <div className="absolute inset-0 rounded-2xl bg-primary/5 blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="text-base font-semibold text-foreground">Ready to preview?</p>
+                      <p className="text-sm text-muted-foreground">Click "Generate Preview" to see a sample message</p>
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="analytics" className="space-y-6">
+            <TabPanel value="analytics" className="space-y-6">
+            {/* Page Header */}
+            <div className="mb-6">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500/10 to-blue-400/5 border border-blue-500/20">
+                  <TrendingUp className="h-5 w-5 text-blue-500" />
+                </div>
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">Analytics</h2>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Track your progress and engagement metrics
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Your Motivation Streak - First */}
             <AnalyticsDashboard 
-              email={user.email} 
+              email={user.email}
+              user={user}
               refreshKey={refreshKey}
               onNewAchievements={handleNewAchievements}
             />
@@ -1301,19 +1669,33 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
             
             {/* Weekly/Monthly Reports */}
             <WeeklyMonthlyReports email={user.email} user={user} refreshKey={refreshKey} />
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="achievements" className="space-y-4 sm:space-y-6">
-            <Card>
+            <TabPanel value="achievements" className="space-y-4 sm:space-y-6">
+            {/* Page Header */}
+            <div className="mb-6">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-orange-500/10 to-amber-500/5 border border-orange-500/20">
+                  <Trophy className="h-5 w-5 text-orange-500" />
+                </div>
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">Achievements</h2>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {achievements.total_unlocked} of {achievements.total_available} unlocked
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <Card className="border border-border/30 hover:border-border/50 transition-all duration-300">
               <CardHeader className="pb-3 sm:pb-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2">
                   <div className="flex-1">
-                    <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-                      <Trophy className="h-5 w-5 text-yellow-500 flex-shrink-0" />
+                    <CardTitle className="text-base sm:text-lg font-semibold">
                       Your Achievements
                     </CardTitle>
-                    <CardDescription className="text-xs sm:text-sm mt-1">
-                      {achievements.total_unlocked} of {achievements.total_available} unlocked
+                    <CardDescription className="text-xs sm:text-sm mt-1.5">
+                      Track your progress and unlock new milestones
                     </CardDescription>
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
@@ -1324,7 +1706,7 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
                       disabled={achievementsLoading}
                       className="flex-1 sm:flex-initial"
                     >
-                      <Download className="h-4 w-4 sm:mr-2" />
+                      <Download />
                       <span className="hidden sm:inline">Export</span>
                     </Button>
                     <Button 
@@ -1334,7 +1716,7 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
                       disabled={achievementsLoading}
                       className="flex-1 sm:flex-initial"
                     >
-                      <RefreshCw className={`h-4 w-4 sm:mr-2 ${achievementsLoading ? 'animate-spin' : ''}`} />
+                      <RefreshCw className={achievementsLoading ? 'animate-spin' : ''} />
                       <span className="hidden sm:inline">Refresh</span>
                     </Button>
                   </div>
@@ -1343,43 +1725,95 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
               <CardContent className="p-4 sm:p-6">
                 {achievementsLoading ? (
                   <div className="flex items-center justify-center py-8 sm:py-12">
-                    <Loader2 className="h-6 w-6 sm:h-8 sm:w-8 animate-spin text-indigo-600" />
+                    <Loader2 className="h-6 w-6 sm:h-8 sm:w-8 animate-spin text-foreground" />
                   </div>
                 ) : (
                   <div className="space-y-4 sm:space-y-6">
-                    {/* Progress Info */}
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-0 text-sm">
-                      <span className="text-muted-foreground">Progress</span>
-                      <span className="font-medium text-base sm:text-sm">
-                        {achievements.total_available > 0 
-                          ? Math.round((achievements.total_unlocked / achievements.total_available) * 100) 
-                          : 0}% ({achievements.total_unlocked} of {achievements.total_available})
-                      </span>
+                    {/* Progress Info with Visual Bar */}
+                    <div className="space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-0">
+                        <span className="text-sm font-medium text-foreground">Progress</span>
+                        <span className="text-sm font-semibold">
+                          {achievements.total_available > 0 
+                            ? Math.round((achievements.total_unlocked / achievements.total_available) * 100) 
+                            : 0}% ({achievements.total_unlocked} of {achievements.total_available})
+                        </span>
+                      </div>
+                      <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-gradient-to-r from-orange-500 via-orange-400 to-amber-500 transition-all duration-700 ease-out rounded-full shadow-sm shadow-orange-500/30"
+                          style={{ 
+                            width: `${achievements.total_available > 0 
+                              ? Math.round((achievements.total_unlocked / achievements.total_available) * 100) 
+                              : 0}%` 
+                          }}
+                        />
+                      </div>
                     </div>
 
                     {/* Unlocked Achievements */}
                     {achievements.unlocked.length > 0 && (
                       <div>
-                        <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-2">
-                          <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0" />
+                        <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-2 text-orange-600/80 dark:text-orange-400/80">
+                          <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-orange-500 flex-shrink-0" />
                           Unlocked ({achievements.unlocked.length})
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                           {achievements.unlocked.map((achievement) => (
                             <Card 
                               key={achievement.id} 
-                              className="border-2 border-green-500 bg-gradient-to-br from-green-50 to-emerald-50"
+                              className="border border-orange-500/20 bg-gradient-to-br from-orange-500/5 to-transparent hover:border-orange-500/30 hover:shadow-md transition-all duration-300"
                             >
                               <CardContent className="p-3 sm:p-4">
                                 <div className="flex items-start gap-2 sm:gap-3">
-                                  <div className="p-1.5 sm:p-2 bg-green-100 rounded-lg text-green-600 flex-shrink-0">
+                                  <div className="p-1.5 sm:p-2 bg-gradient-to-br from-orange-500/20 to-amber-500/15 border border-orange-500/25 rounded-lg text-orange-500 flex-shrink-0">
                                     {getAchievementIcon(achievement.icon_name)}
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mb-1">
-                                      <h4 className="font-semibold text-sm sm:text-base truncate">{achievement.name}</h4>
-                                      <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300 text-xs w-fit">
+                                      <h4 className="font-semibold text-sm sm:text-base truncate text-foreground">{achievement.name}</h4>
+                                      <Badge variant="outline" className="bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30 text-xs w-fit">
                                         Unlocked
+                                      </Badge>
+                                    </div>
+                                    <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">{achievement.description}</p>
+                                    {achievement.category && (
+                                      <Badge variant="secondary" className="mt-2 text-xs bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
+                                        {achievement.category}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Locked Achievements */}
+                    {achievements.locked.length > 0 && (
+                      <div>
+                        <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-2 text-muted-foreground">
+                          <Award className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground flex-shrink-0" />
+                          Locked ({achievements.locked.length})
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                          {achievements.locked.map((achievement) => (
+                            <Card 
+                              key={achievement.id} 
+                              className="border border-border/30 bg-muted/30 opacity-75 group hover:opacity-90 hover:border-orange-500/20 transition-all duration-300"
+                            >
+                              <CardContent className="p-3 sm:p-4">
+                                <div className="flex items-start gap-2 sm:gap-3">
+                                  <div className="p-1.5 sm:p-2 bg-muted rounded-lg text-muted-foreground flex-shrink-0 group-hover:bg-orange-500/10 group-hover:text-orange-500/50 transition-colors">
+                                    {getAchievementIcon(achievement.icon_name)}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mb-1">
+                                      <h4 className="font-semibold text-sm sm:text-base text-muted-foreground truncate">{achievement.name}</h4>
+                                      <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-xs w-fit">
+                                        Locked
                                       </Badge>
                                     </div>
                                     <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">{achievement.description}</p>
@@ -1397,85 +1831,86 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
                       </div>
                     )}
 
-                    {/* Locked Achievements */}
-                    {achievements.locked.length > 0 && (
-                      <div>
-                        <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center gap-2">
-                          <Award className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 flex-shrink-0" />
-                          Locked ({achievements.locked.length})
-                        </h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                          {achievements.locked.map((achievement) => (
-                            <Card 
-                              key={achievement.id} 
-                              className="border-2 border-gray-200 bg-gray-50 opacity-75"
-                            >
-                              <CardContent className="p-3 sm:p-4">
-                                <div className="flex items-start gap-2 sm:gap-3">
-                                  <div className="p-1.5 sm:p-2 bg-gray-200 rounded-lg text-gray-400 flex-shrink-0">
-                                    {getAchievementIcon(achievement.icon_name)}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mb-1">
-                                      <h4 className="font-semibold text-sm sm:text-base text-gray-600 truncate">{achievement.name}</h4>
-                                      <Badge variant="outline" className="bg-gray-100 text-gray-500 border-gray-300 text-xs w-fit">
-                                        Locked
-                                      </Badge>
-                                    </div>
-                                    <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">{achievement.description}</p>
-                                    {achievement.category && (
-                                      <Badge variant="secondary" className="mt-2 text-xs bg-gray-200">
-                                        {achievement.category}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
                     {/* Empty State */}
                     {achievements.unlocked.length === 0 && achievements.locked.length === 0 && (
-                      <div className="text-center py-12">
-                        <Trophy className="h-16 w-16 mx-auto text-gray-300 mb-4" />
-                        <p className="text-muted-foreground">No achievements available yet</p>
+                      <div className="text-center py-16">
+                        <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                          <Trophy className="h-10 w-10 text-muted-foreground" />
+                        </div>
+                        <h3 className="text-lg font-semibold mb-2">No achievements available yet</h3>
+                        <p className="text-sm text-muted-foreground">Start using Tend to unlock achievements!</p>
                       </div>
                     )}
                   </div>
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="history" className="space-y-6">
+            <TabPanel value="history" className="space-y-6">
+            {/* Page Header */}
+            <div className="mb-6">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-purple-500/10 to-purple-400/5 border border-purple-500/20">
+                  <History className="h-5 w-5 text-purple-500" />
+                </div>
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">Message History</h2>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    View and manage all your motivational messages
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <MessageHistory
               email={user.email}
               timezone={userTimezone}
               refreshKey={refreshKey}
               onFeedbackSubmitted={refreshUserData}
             />
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="settings" className="space-y-4 sm:space-y-6">
-            <Card>
-              <CardHeader className="pb-3 sm:pb-6">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2">
-                  <div className="flex-1">
-                    <CardTitle className="text-lg sm:text-xl">Basic Information</CardTitle>
-                    <CardDescription className="text-xs sm:text-sm mt-1">Update your name and email preferences</CardDescription>
+            <TabPanel value="settings" className="space-y-6">
+              {/* Page Header */}
+              <div className="mb-6">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 rounded-lg bg-gradient-to-br from-gray-500/10 to-gray-400/5 border border-gray-500/20">
+                    <Settings className="h-5 w-5 text-gray-500" />
                   </div>
-                  {!editMode && (
-                    <Button onClick={() => setEditMode(true)} data-testid="edit-settings-btn" className="w-full sm:w-auto">
-                      <Edit className="h-4 w-4 sm:mr-2" />
-                      <span className="sm:inline">Edit</span>
-                    </Button>
-                  )}
+                  <div>
+                    <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">Settings</h2>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      Manage your account preferences and information
+                    </p>
+                  </div>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
+              </div>
+
+              {/* Basic Information Card */}
+              <Card className="group hover:shadow-md transition-all duration-200">
+                <CardHeader className="pb-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="p-2 rounded-lg bg-muted group-hover:bg-accent transition-colors">
+                          <User className="h-5 w-5 text-foreground" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-lg sm:text-xl">Basic Information</CardTitle>
+                          <CardDescription className="text-xs sm:text-sm mt-0.5">Update your name and email preferences</CardDescription>
+                        </div>
+                      </div>
+                    </div>
+                    {!editMode && (
+                      <Button onClick={() => setEditMode(true)} data-testid="edit-settings-btn" className="w-full sm:w-auto shrink-0">
+                        <Edit />
+                        <span className="sm:inline">Edit</span>
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-5 p-4 sm:p-6">
                 <div>
                   <Label className="text-sm sm:text-base">Name</Label>
                   <Input
@@ -1538,22 +1973,30 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="pb-3 sm:pb-6">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2">
-                  <div className="flex-1">
-                    <CardTitle className="text-lg sm:text-xl">Account Management</CardTitle>
-                    <CardDescription className="text-xs sm:text-sm mt-1">Manage your account settings, email, password, and security</CardDescription>
+              {/* Account Management Card */}
+              <Card className="group hover:shadow-md transition-all duration-200">
+                <CardHeader className="pb-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="p-2 rounded-lg bg-muted group-hover:bg-accent transition-colors">
+                          <Shield className="h-5 w-5 text-foreground" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-lg sm:text-xl">Account Management</CardTitle>
+                          <CardDescription className="text-xs sm:text-sm mt-0.5">Manage your account settings, email, password, and security</CardDescription>
+                        </div>
+                      </div>
+                    </div>
+                    {!editAccountMode && (
+                      <Button onClick={() => setEditAccountMode(true)} variant="outline" size="sm" className="w-full sm:w-auto shrink-0">
+                        <Edit />
+                        <span className="sm:inline">Edit</span>
+                      </Button>
+                    )}
                   </div>
-                  {!editAccountMode && (
-                    <Button onClick={() => setEditAccountMode(true)} variant="outline" size="sm" className="w-full sm:w-auto">
-                      <Edit className="h-4 w-4 sm:mr-2" />
-                      <span className="sm:inline">Edit</span>
-                    </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
+                </CardHeader>
+                <CardContent className="space-y-5 p-4 sm:p-6">
                 {!editAccountMode ? (
                   <>
                     {!clerkLoaded ? (
@@ -1644,10 +2087,11 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
+            </TabPanel>
+          </TabPanels>
+        </TabGroup>
+      </DashboardLayout>
+    </>
   );
 }
 
@@ -1671,6 +2115,7 @@ function AchievementFormCard({ achievement, onSave, onCancel, getAchievementIcon
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.id || !formData.name || !formData.description) {
+      showNotification({ type: 'error', message: "Please fill in all required fields", title: "Validation Error" });
       toast.error("Please fill in all required fields");
       return;
     }
@@ -1945,6 +2390,7 @@ function AdminDashboard() {
       // Store token in sessionStorage
       sessionStorage.setItem('adminToken', token);
     } catch (error) {
+      showNotification({ type: 'error', message: "Authentication failed", title: "Error" });
       toast.error("Authentication failed");
       setAuthenticated(false);
       sessionStorage.removeItem('adminToken');
@@ -1984,6 +2430,7 @@ function AdminDashboard() {
         setAchievements(response.data);
       } else {
         console.error("Unexpected response format:", response.data);
+        showNotification({ type: 'error', message: "Unexpected response format from server", title: "Error" });
         toast.error("Unexpected response format from server");
         setAchievements([]);
       }
@@ -2007,20 +2454,23 @@ function AdminDashboard() {
     try {
       const headers = { Authorization: `Bearer ${sessionStorage.getItem('adminToken')}` };
       await axios.post(`${API}/admin/achievements`, achievementData, { headers });
-      toast.success("🏆 Achievement Created!", {
+      showNotification({ type: 'success', message: "Achievement Created!", title: "Success" });
+      toast.success("Achievement Created!", {
         description: "New achievement added! Users can now unlock this milestone!",
         duration: 4000,
       });
       
       setTimeout(() => {
-        toast.success("✨ Exciting!", {
+        showNotification({ type: 'success', message: "Exciting!", title: "Success" });
+        toast.success("Exciting!", {
           description: "This achievement will motivate users to reach new heights!",
           duration: 3000,
         });
       }, 600);
       
       setTimeout(() => {
-        toast.success("🎯 Users Will Love This!", {
+        showNotification({ type: 'success', message: "Users Will Love This!", title: "Success" });
+        toast.success("Users Will Love This!", {
           description: "They'll be excited to unlock this achievement!",
           duration: 2500,
         });
@@ -2037,13 +2487,15 @@ function AdminDashboard() {
     try {
       const headers = { Authorization: `Bearer ${sessionStorage.getItem('adminToken')}` };
       await axios.put(`${API}/admin/achievements/${achievementId}`, achievementData, { headers });
-      toast.success("✅ Achievement Updated!", {
+      showNotification({ type: 'success', message: "Achievement Updated!", title: "Success" });
+      toast.success("Achievement Updated!", {
         description: "The achievement has been updated successfully!",
         duration: 3000,
       });
       
       setTimeout(() => {
-        toast.success("🎯 Changes Saved!", {
+        showNotification({ type: 'success', message: "Changes Saved!", title: "Success" });
+        toast.success("Changes Saved!", {
           description: "Users will see the updated achievement details!",
           duration: 2500,
         });
@@ -2064,7 +2516,8 @@ function AdminDashboard() {
       const headers = { Authorization: `Bearer ${sessionStorage.getItem('adminToken')}` };
       await axios.delete(`${API}/admin/achievements/${achievementId}?hard_delete=${hardDelete}`, { headers });
       if (hardDelete) {
-        toast.success("🗑️ Achievement Deleted", {
+        showNotification({ type: 'success', message: "Achievement has been deleted", title: "Achievement Deleted" });
+        toast.success("Achievement Deleted", {
           description: "The achievement has been permanently removed from the system.",
           duration: 3000,
         });
@@ -2075,7 +2528,8 @@ function AdminDashboard() {
         });
         
         setTimeout(() => {
-          toast.info("💡 Tip", {
+          showNotification({ type: 'info', message: "Tip", title: "Info" });
+          toast.info("Tip", {
             description: "You can reactivate it anytime if needed!",
             duration: 2500,
           });
@@ -2097,13 +2551,15 @@ function AdminDashboard() {
           duration: 3000,
         });
       } else {
-        toast.success("🎉 Achievement Assigned!", {
+        showNotification({ type: 'success', message: "Achievement Assigned!", title: "Success" });
+        toast.success("Achievement Assigned!", {
           description: "The user has been awarded this achievement!",
           duration: 3000,
         });
         
         setTimeout(() => {
-          toast.success("✨ They'll Love It!", {
+          showNotification({ type: 'success', message: "They'll Love It!", title: "Success" });
+          toast.success("They'll Love It!", {
             description: "This will make their day!",
             duration: 2500,
           });
@@ -2458,7 +2914,7 @@ function AdminDashboard() {
         <Card className="max-w-md w-full">
           <CardHeader>
             <div className="flex justify-center mb-4">
-              <Shield className="h-12 w-12 text-indigo-500" />
+              <Shield className="h-12 w-12 text-foreground" />
             </div>
             <CardTitle className="text-center">Admin Access</CardTitle>
             <CardDescription className="text-center">Enter admin credentials</CardDescription>
@@ -2492,11 +2948,11 @@ function AdminDashboard() {
           </div>
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <Button variant="outline" onClick={handleRefresh} disabled={loading} className="w-full sm:w-auto">
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={loading ? 'animate-spin' : ''} />
               Refresh
             </Button>
             <Button variant="outline" onClick={handleLogout} className="w-full sm:w-auto">
-              <LogOut className="h-4 w-4 mr-2" />
+              <LogOut />
               Logout
             </Button>
           </div>
@@ -2512,7 +2968,7 @@ function AdminDashboard() {
         {!loading && !stats && (
           <Card className="mb-8">
             <CardContent className="p-6">
-              <div className="flex items-center gap-2 text-yellow-600">
+              <div className="flex items-center gap-2 text-foreground">
                 <AlertTriangle className="h-5 w-5" />
                 <p>Stats not available. Please refresh or check your connection.</p>
               </div>
@@ -2572,7 +3028,7 @@ function AdminDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold text-orange-600">{stats.avg_streak}</p>
+                <p className="text-3xl font-bold text-foreground">{stats.avg_streak}</p>
                 <p className="text-xs text-muted-foreground mt-1">days</p>
               </CardContent>
             </Card>
@@ -2585,7 +3041,7 @@ function AdminDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold text-yellow-600">{stats.avg_rating}</p>
+                <p className="text-3xl font-bold text-foreground">{stats.avg_rating}</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   {stats.total_feedback} feedbacks
                 </p>
@@ -2594,48 +3050,49 @@ function AdminDashboard() {
           </div>
         )}
 
-        <Tabs defaultValue="realtime" className="space-y-4 sm:space-y-6">
+        <TabGroup defaultValue="realtime" className="space-y-4 sm:space-y-6">
           <div className="overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0">
-            <TabsList className="inline-flex w-full min-w-max sm:min-w-0 gap-1 sm:gap-0 sm:grid sm:grid-cols-12">
-              <TabsTrigger value="realtime" className="flex-shrink-0 text-xs sm:text-sm">
-                <span className="hidden sm:inline">🔴 Live</span>
+            <TabList className="inline-flex w-full min-w-max sm:min-w-0 gap-1 sm:gap-0 sm:grid sm:grid-cols-12">
+              <Tab value="realtime" className="flex-shrink-0 text-xs sm:text-sm">
+                <span className="hidden sm:inline">Live</span>
                 <span className="sm:hidden">Live</span>
-              </TabsTrigger>
-              <TabsTrigger value="users" className="flex-shrink-0 text-xs sm:text-sm">
+              </Tab>
+              <Tab value="users" className="flex-shrink-0 text-xs sm:text-sm">
                 <span className="hidden sm:inline">Users ({users.length})</span>
                 <span className="sm:hidden">Users</span>
-              </TabsTrigger>
-              <TabsTrigger value="email-history" className="flex-shrink-0 text-xs sm:text-sm">
+              </Tab>
+              <Tab value="email-history" className="flex-shrink-0 text-xs sm:text-sm">
                 <span className="hidden sm:inline">Email History</span>
                 <span className="sm:hidden">Emails</span>
-              </TabsTrigger>
-              <TabsTrigger value="logs" className="flex-shrink-0 text-xs sm:text-sm">
+              </Tab>
+              <Tab value="logs" className="flex-shrink-0 text-xs sm:text-sm">
                 <span className="hidden sm:inline">Logs ({logs.length})</span>
                 <span className="sm:hidden">Logs</span>
-              </TabsTrigger>
-              <TabsTrigger value="feedback" className="flex-shrink-0 text-xs sm:text-sm">
+              </Tab>
+              <Tab value="feedback" className="flex-shrink-0 text-xs sm:text-sm">
                 <span className="hidden sm:inline">Feedback ({feedbacks.length})</span>
                 <span className="sm:hidden">Feedback</span>
-              </TabsTrigger>
-              <TabsTrigger value="events" className="flex-shrink-0 text-xs sm:text-sm">Events</TabsTrigger>
-              <TabsTrigger value="errors" className="flex-shrink-0 text-xs sm:text-sm">
+              </Tab>
+              <Tab value="events" className="flex-shrink-0 text-xs sm:text-sm">Events</Tab>
+              <Tab value="errors" className="flex-shrink-0 text-xs sm:text-sm">
                 <span className="hidden sm:inline">Errors {errors?.total > 0 && `(${errors.total})`}</span>
                 <span className="sm:hidden">Errors</span>
-              </TabsTrigger>
-              <TabsTrigger value="scheduler" className="flex-shrink-0 text-xs sm:text-sm">Scheduler</TabsTrigger>
-              <TabsTrigger value="database" className="flex-shrink-0 text-xs sm:text-sm">Database</TabsTrigger>
-              <TabsTrigger value="trends" className="flex-shrink-0 text-xs sm:text-sm">Trends</TabsTrigger>
-              <TabsTrigger value="search" className="flex-shrink-0 text-xs sm:text-sm">Search</TabsTrigger>
-              <TabsTrigger value="broadcast" className="flex-shrink-0 text-xs sm:text-sm">Broadcast</TabsTrigger>
-              <TabsTrigger value="achievements" className="flex-shrink-0 text-xs sm:text-sm">Achievements</TabsTrigger>
-            </TabsList>
+              </Tab>
+              <Tab value="scheduler" className="flex-shrink-0 text-xs sm:text-sm">Scheduler</Tab>
+              <Tab value="database" className="flex-shrink-0 text-xs sm:text-sm">Database</Tab>
+              <Tab value="trends" className="flex-shrink-0 text-xs sm:text-sm">Trends</Tab>
+              <Tab value="search" className="flex-shrink-0 text-xs sm:text-sm">Search</Tab>
+              <Tab value="broadcast" className="flex-shrink-0 text-xs sm:text-sm">Broadcast</Tab>
+              <Tab value="achievements" className="flex-shrink-0 text-xs sm:text-sm">Achievements</Tab>
+            </TabList>
           </div>
           
-          <TabsContent value="realtime">
+          <TabPanels>
+            <TabPanel value="realtime">
             <RealTimeAnalytics adminToken={sessionStorage.getItem('adminToken')} />
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="email-history">
+            <TabPanel value="email-history">
             <div className="space-y-6">
               <Card>
                 <CardHeader>
@@ -2643,11 +3100,11 @@ function AdminDashboard() {
                     <CardTitle className="text-lg sm:text-xl">All Email Send History</CardTitle>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" onClick={fetchAllMessageHistory} className="flex-1 sm:flex-none">
-                        <RefreshCw className="h-4 w-4 mr-2" />
+                        <RefreshCw />
                         Refresh
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => handleExportData('messages')} className="flex-1 sm:flex-none">
-                        <Download className="h-4 w-4 mr-2" />
+                        <Download />
                         Export
                       </Button>
                     </div>
@@ -2682,7 +3139,7 @@ function AdminDashboard() {
                       className="w-full sm:max-w-xs"
                     />
                     <Button onClick={fetchAllMessageHistory} size="sm" className="w-full sm:w-auto">
-                      <Filter className="h-4 w-4 mr-2" />
+                      <Filter />
                       Apply Filters
                     </Button>
                     <Button 
@@ -2713,7 +3170,7 @@ function AdminDashboard() {
                                       <Badge variant="outline">{safePersonalityValue(msg.personality)}</Badge>
                                     )}
                                     {msg.used_fallback && (
-                                      <Badge className="bg-yellow-500">Backup</Badge>
+                                      <Badge className="bg-foreground text-background">Backup</Badge>
                                     )}
                                     {msg.rating && (
                                       <div className="flex">
@@ -2722,7 +3179,7 @@ function AdminDashboard() {
                                             key={i}
                                             className={`h-3 w-3 ${
                                               i < msg.rating
-                                                ? 'fill-yellow-400 text-yellow-400'
+                                                ? 'fill-foreground text-foreground'
                                                 : 'text-gray-300'
                                             }`}
                                           />
@@ -2732,9 +3189,9 @@ function AdminDashboard() {
                                   </div>
                                   <p className="text-xs sm:text-sm text-gray-700 line-clamp-3 mb-2">{msg.message}</p>
                                   {msg.feedback_text && (
-                                    <div className="mt-2 p-2 bg-blue-50 rounded border-l-2 border-blue-400">
-                                      <p className="text-xs text-blue-700 font-medium mb-1">User Feedback:</p>
-                                      <p className="text-xs text-blue-900">{msg.feedback_text}</p>
+                                    <div className="mt-2 p-2 bg-muted rounded border border-border">
+                                      <p className="text-xs text-foreground font-medium mb-1">User Feedback:</p>
+                                      <p className="text-xs text-foreground">{msg.feedback_text}</p>
                                     </div>
                                   )}
                                 </div>
@@ -2775,21 +3232,21 @@ function AdminDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                      <div className="p-4 bg-blue-50 rounded-lg">
+                      <div className="p-4 bg-muted rounded-lg">
                         <p className="text-sm text-muted-foreground">Total Sent</p>
-                        <p className="text-2xl font-bold text-blue-600">{emailStats.summary?.total_sent || 0}</p>
+                        <p className="text-2xl font-bold text-foreground">{emailStats.summary?.total_sent || 0}</p>
                       </div>
-                      <div className="p-4 bg-green-50 rounded-lg">
+                      <div className="p-4 bg-muted rounded-lg">
                         <p className="text-sm text-muted-foreground">Successful</p>
-                        <p className="text-2xl font-bold text-green-600">{emailStats.summary?.successful || 0}</p>
+                        <p className="text-2xl font-bold text-foreground">{emailStats.summary?.successful || 0}</p>
                       </div>
-                      <div className="p-4 bg-red-50 rounded-lg">
+                      <div className="p-4 bg-muted rounded-lg">
                         <p className="text-sm text-muted-foreground">Failed</p>
-                        <p className="text-2xl font-bold text-red-600">{emailStats.summary?.failed || 0}</p>
+                        <p className="text-2xl font-bold text-foreground">{emailStats.summary?.failed || 0}</p>
                       </div>
-                      <div className="p-4 bg-indigo-50 rounded-lg">
+                      <div className="p-4 bg-muted rounded-lg">
                         <p className="text-sm text-muted-foreground">Success Rate</p>
-                        <p className="text-2xl font-bold text-indigo-600">{emailStats.summary?.success_rate || 0}%</p>
+                        <p className="text-2xl font-bold text-foreground">{emailStats.summary?.success_rate || 0}%</p>
                       </div>
                     </div>
 
@@ -2801,8 +3258,8 @@ function AdminDashboard() {
                             <div key={user._id || idx} className="flex items-center justify-between p-2 border rounded">
                               <span className="text-sm font-medium">{user._id || 'Unknown'}</span>
                               <div className="flex items-center gap-3">
-                                <Badge className="bg-green-500">{user.success_count || 0} ✓</Badge>
-                                <Badge className="bg-red-500">{user.failed_count || 0} ✗</Badge>
+                                <Badge className="bg-foreground text-background">{user.success_count || 0} ✓</Badge>
+                                <Badge className="bg-foreground text-background">{user.failed_count || 0} ✗</Badge>
                                 <span className="text-sm font-bold">{user.count || 0} total</span>
                               </div>
                             </div>
@@ -2814,9 +3271,9 @@ function AdminDashboard() {
                 </Card>
               )}
             </div>
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="users">
+            <TabPanel value="users">
             <Card>
               <CardHeader>
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
@@ -2856,7 +3313,7 @@ function AdminDashboard() {
                     const hasScheduleTime = scheduleTimeLabel && scheduleTimeLabel !== "Not set";
                     const displayTimezone = getDisplayTimezone(scheduleTimezone);
                     const cardStatusLabel = schedule.paused ? "Paused" : user.active ? "Active" : "Inactive";
-                    const cardStatusColor = schedule.paused ? "bg-yellow-400" : user.active ? "bg-green-500" : "bg-gray-400";
+                    const cardStatusColor = schedule.paused ? "bg-muted-foreground" : user.active ? "bg-foreground" : "bg-muted";
                     
                     // Get personality display string safely
                     const personalityDisplay = personalities.length > 0 
@@ -2900,7 +3357,7 @@ function AdminDashboard() {
                                 )}
                               </p>
                               <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Flame className="h-3 w-3" /> Streak: <span className="font-semibold text-orange-600">{user.streak_count || 0} days</span> • 
+                                <Flame className="h-3 w-3" /> Streak: <span className="font-semibold text-foreground">{user.streak_count || 0} days</span> • 
                                 <MessageSquare className="h-3 w-3 ml-1" /> Messages: {user.total_messages_received || 0}
                               </p>
                             </div>
@@ -2912,7 +3369,7 @@ function AdminDashboard() {
                               onClick={() => handleViewUserDetails(user.email)}
                               className="flex-1 sm:flex-none text-xs sm:text-sm"
                             >
-                              <Eye className="h-3 w-3 mr-1" />
+                              <Eye />
                               Details
                             </Button>
                             <Button 
@@ -2921,7 +3378,7 @@ function AdminDashboard() {
                               onClick={() => handleSendTestEmail(user.email)}
                               className="flex-1 sm:flex-none text-xs sm:text-sm"
                             >
-                              <Mail className="h-3 w-3 mr-1" />
+                              <Mail />
                               <span className="hidden sm:inline">Send Now</span>
                               <span className="sm:hidden">Send</span>
                             </Button>
@@ -2944,9 +3401,9 @@ function AdminDashboard() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="logs">
+            <TabPanel value="logs">
             <div className="space-y-6">
               <Card>
                 <CardHeader>
@@ -2958,7 +3415,7 @@ function AdminDashboard() {
                       </CardDescription>
                     </div>
                     <Button variant="outline" size="sm" onClick={() => fetchUnifiedLogs(1, true)}>
-                      <RefreshCw className={`h-4 w-4 mr-2 ${unifiedLogsLoading ? 'animate-spin' : ''}`} />
+                      <RefreshCw className={unifiedLogsLoading ? 'animate-spin' : ''} />
                       Refresh
                     </Button>
                   </div>
@@ -3038,7 +3495,7 @@ function AdminDashboard() {
                           const isError = log.status === 'error' || log.status === 'failed' || (log.status_code && log.status_code >= 400);
                           
                           return (
-                            <Card key={`${log.id || log.log_type}-${index}`} className={`hover:bg-slate-50 transition ${isError ? 'border-red-200 bg-red-50/30' : ''}`}>
+                            <Card key={`${log.id || log.log_type}-${index}`} className={`hover:bg-slate-50 transition ${isError ? 'border-border bg-muted/30' : ''}`}>
                               <CardContent className="p-3 sm:p-4">
                                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                                   <div className="flex-1 min-w-0">
@@ -3060,18 +3517,18 @@ function AdminDashboard() {
                                       )}
                                       
                                       {log.status && (
-                                        <Badge className={log.status === 'success' ? 'bg-green-500' : log.status === 'error' || log.status === 'failed' ? 'bg-red-500' : 'bg-yellow-500'}>
+                                        <Badge className={log.status === 'success' ? 'bg-foreground text-background' : log.status === 'error' || log.status === 'failed' ? 'bg-foreground text-background' : 'bg-muted-foreground text-background'}>
                                           {log.status}
                                         </Badge>
                                       )}
                                       {log.status_code && (
-                                        <Badge className={log.status_code >= 400 ? 'bg-red-500' : log.status_code >= 300 ? 'bg-yellow-500' : 'bg-green-500'}>
+                                        <Badge className={log.status_code >= 400 ? 'bg-foreground text-background' : log.status_code >= 300 ? 'bg-muted-foreground text-background' : 'bg-foreground text-background'}>
                                           {log.status_code}
                                         </Badge>
                                       )}
                                       
                                       {log.response_time_ms && (
-                                        <Badge variant="outline" className={log.response_time_ms > 1000 ? 'text-red-600' : log.response_time_ms > 500 ? 'text-yellow-600' : ''}>
+                                        <Badge variant="outline" className={log.response_time_ms > 1000 ? 'text-foreground' : log.response_time_ms > 500 ? 'text-muted-foreground' : ''}>
                                           {log.response_time_ms}ms
                                         </Badge>
                                       )}
@@ -3095,7 +3552,7 @@ function AdminDashboard() {
                                     )}
                                     
                                     {log.error_message && (
-                                      <div className="mt-2 p-2 bg-red-50 border-l-2 border-red-400 rounded text-xs text-red-700">
+                                      <div className="mt-2 p-2 bg-muted border border-border rounded text-xs text-foreground">
                                         <strong>Error:</strong> {log.error_message}
                                       </div>
                                     )}
@@ -3165,14 +3622,14 @@ function AdminDashboard() {
                             <div className="flex items-center gap-2">
                               <p className="font-medium">{log.email}</p>
                               <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                log.status === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                log.status === 'success' ? 'bg-muted text-foreground' : 'bg-muted text-foreground'
                               }`}>
                                 {log.status}
                               </span>
                             </div>
                             <p className="text-xs text-muted-foreground">{log.subject}</p>
                             {log.error_message && (
-                              <p className="text-xs text-red-600 mt-1">Error: {log.error_message}</p>
+                              <p className="text-xs text-foreground mt-1">Error: {log.error_message}</p>
                             )}
                           </div>
                           <span className="text-xs text-muted-foreground">
@@ -3190,9 +3647,9 @@ function AdminDashboard() {
                 </CardContent>
               </Card>
             </div>
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="events">
+            <TabPanel value="events">
             <Card>
               <CardHeader>
                 <CardTitle>System Events</CardTitle>
@@ -3204,7 +3661,7 @@ function AdminDashboard() {
                     <div key={event.id} className="flex items-start justify-between p-3 border rounded-lg text-sm">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <Badge className={event.status === 'success' ? 'bg-green-500' : 'bg-red-500'}>
+                          <Badge className={event.status === 'success' ? 'bg-foreground text-background' : 'bg-foreground text-background'}>
                             {event.status}
                           </Badge>
                           <span className="font-medium">{event.event_type}</span>
@@ -3232,26 +3689,26 @@ function AdminDashboard() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="errors">
+            <TabPanel value="errors">
             <div className="grid gap-6">
               {errors && (
                 <>
                   <Card>
                     <CardHeader>
                       <div className="flex items-center gap-2">
-                        <AlertTriangle className="h-5 w-5 text-red-600" />
+                        <AlertTriangle className="h-5 w-5 text-foreground" />
                         <CardTitle>System Errors ({errors.system_errors?.length || 0})</CardTitle>
                       </div>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
                         {errors.system_errors?.slice(0, 20).map((error) => (
-                          <div key={error.id} className="p-3 border rounded-lg bg-red-50">
+                          <div key={error.id} className="p-3 border rounded-lg bg-muted">
                             <div className="flex items-start justify-between">
                               <div className="flex-1">
-                                <Badge className="bg-red-500 mb-2">{error.event_type}</Badge>
+                                <Badge className="bg-foreground text-background mb-2">{error.event_type}</Badge>
                                 {error.details && (
                                   <pre className="text-xs overflow-x-auto mt-2">
                                     {JSON.stringify(error.details, null, 2)}
@@ -3278,15 +3735,15 @@ function AdminDashboard() {
                     <CardContent>
                       <div className="space-y-3">
                         {errors.api_errors?.slice(0, 20).map((error) => (
-                          <div key={error.id} className="p-3 border rounded-lg bg-orange-50">
+                          <div key={error.id} className="p-3 border rounded-lg bg-muted">
                             <div className="flex items-start justify-between">
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-2">
-                                  <Badge className="bg-orange-500">{error.status_code}</Badge>
+                                  <Badge className="bg-foreground text-background">{error.status_code}</Badge>
                                   <span className="font-medium text-sm">{error.endpoint}</span>
                                 </div>
                                 {error.error_message && (
-                                  <p className="text-xs text-red-600">{error.error_message}</p>
+                                  <p className="text-xs text-foreground">{error.error_message}</p>
                                 )}
                                 <p className="text-xs text-muted-foreground mt-1">
                                   Response time: {error.response_time_ms}ms
@@ -3336,9 +3793,9 @@ function AdminDashboard() {
                 </>
               )}
             </div>
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="feedback">
+            <TabPanel value="feedback">
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -3400,9 +3857,9 @@ function AdminDashboard() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="analytics">
+            <TabPanel value="analytics">
             <div className="grid gap-6">
               <Card>
                 <CardHeader>
@@ -3425,13 +3882,13 @@ function AdminDashboard() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 pt-4">
-                      <div className="p-4 bg-blue-50 rounded-lg">
+                      <div className="p-4 bg-muted rounded-lg">
                         <p className="text-sm text-muted-foreground">Active Users</p>
-                        <p className="text-2xl font-bold text-blue-600">{stats?.active_users || 0}</p>
+                        <p className="text-2xl font-bold text-foreground">{stats?.active_users || 0}</p>
                       </div>
-                      <div className="p-4 bg-red-50 rounded-lg">
+                      <div className="p-4 bg-muted rounded-lg">
                         <p className="text-sm text-muted-foreground">Inactive Users</p>
-                        <p className="text-2xl font-bold text-red-600">{stats?.inactive_users || 0}</p>
+                        <p className="text-2xl font-bold text-foreground">{stats?.inactive_users || 0}</p>
                       </div>
                     </div>
                   </div>
@@ -3466,9 +3923,9 @@ function AdminDashboard() {
                 </CardContent>
               </Card>
             </div>
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="scheduler">
+            <TabPanel value="scheduler">
             <Card>
               <CardHeader>
                 <CardTitle>Scheduled Jobs ({schedulerJobs.length})</CardTitle>
@@ -3503,9 +3960,9 @@ function AdminDashboard() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="database">
+            <TabPanel value="database">
             <div className="grid gap-6">
               {dbHealth && (
                 <>
@@ -3549,7 +4006,7 @@ function AdminDashboard() {
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">Errors</p>
-                          <p className="text-2xl font-bold text-red-600">{dbHealth.recent_activity?.errors_24h || 0}</p>
+                          <p className="text-2xl font-bold text-foreground">{dbHealth.recent_activity?.errors_24h || 0}</p>
                         </div>
                       </div>
                     </CardContent>
@@ -3557,9 +4014,9 @@ function AdminDashboard() {
                 </>
               )}
             </div>
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="trends">
+            <TabPanel value="trends">
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -3597,8 +4054,8 @@ function AdminDashboard() {
                           <div key={item._id} className="flex items-center justify-between">
                             <span className="text-sm">{item._id}</span>
                             <div className="flex items-center gap-2">
-                              <Badge className="bg-green-500">{item.success || 0}</Badge>
-                              <Badge className="bg-red-500">{item.failed || 0}</Badge>
+                              <Badge className="bg-foreground text-background">{item.success || 0}</Badge>
+                              <Badge className="bg-foreground text-background">{item.failed || 0}</Badge>
                               <span className="text-sm font-medium">{item.count} total</span>
                             </div>
                           </div>
@@ -3627,9 +4084,9 @@ function AdminDashboard() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="search">
+            <TabPanel value="search">
             <Card>
               <CardHeader>
                 <CardTitle>Global Search</CardTitle>
@@ -3705,9 +4162,9 @@ function AdminDashboard() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="broadcast">
+            <TabPanel value="broadcast">
             <Card>
               <CardHeader>
                 <CardTitle>Broadcast Message</CardTitle>
@@ -3739,9 +4196,9 @@ function AdminDashboard() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="achievements" className="space-y-6">
+            <TabPanel value="achievements" className="space-y-6">
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -4015,8 +4472,9 @@ function AdminDashboard() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+            </TabPanel>
+          </TabPanels>
+        </TabGroup>
 
         {/* User Details Modal */}
         {selectedUserEmail && (
@@ -4072,7 +4530,7 @@ function UserApp() {
       
       // User synced successfully (logged in development only)
       if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ Synced Clerk user to database: ${email}`);
+        console.log(`Synced Clerk user to database: ${email}`);
       }
     } catch (error) {
       console.error("Failed to sync Clerk user:", error);
@@ -4211,6 +4669,7 @@ function App() {
       <ErrorBoundary>
         <div className="App">
           <Toaster position="top-center" />
+          <NotificationList />
           <NetworkStatus />
           <AdminDashboard />
         </div>
@@ -4222,6 +4681,7 @@ function App() {
     <ErrorBoundary>
       <div className="App">
         <Toaster position="top-center" />
+        <NotificationList />
         <NetworkStatus />
 
         <SignedOut>

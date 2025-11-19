@@ -33,13 +33,13 @@ const getBackendUrl = () => {
   
   // Development fallback (localhost only)
   if (process.env.NODE_ENV === 'development') {
-    console.warn('⚠️ REACT_APP_BACKEND_URL not set, using localhost:8000 for development');
+    console.warn('REACT_APP_BACKEND_URL not set, using localhost:8000 for development');
     _backendUrl = 'http://localhost:8000';
     return _backendUrl;
   }
   
   // Production without URL configured - show clear error
-  console.error('❌ REACT_APP_BACKEND_URL must be set in production environment variables');
+  console.error('REACT_APP_BACKEND_URL must be set in production environment variables');
   console.error('   Set it in Vercel: Settings → Environment Variables → Add REACT_APP_BACKEND_URL');
   _backendUrl = ''; // Empty string - components should handle this gracefully
   return _backendUrl;

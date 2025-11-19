@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { LiquidButton as Button } from "@/components/animate-ui/components/buttons/liquid";
 import { Badge } from "@/components/ui/badge";
 import { X, Mail, Star, Activity, Clock, TrendingUp, User, Calendar, MessageSquare, Trophy, Award, Edit, Trash2 } from 'lucide-react';
 import axios from 'axios';

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LiquidButton as Button } from "@/components/animate-ui/components/buttons/liquid";
+import { TabGroup, TabList, Tab, TabPanels, TabPanel } from "@/components/animate-ui/components/headless/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, TrendingUp, Mail, Target, Award, Download, Loader2 } from "lucide-react";
 import axios from "axios";
@@ -102,13 +102,14 @@ export const WeeklyMonthlyReports = React.memo(function WeeklyMonthlyReports({ e
         </div>
       </CardHeader>
       <CardContent className="p-4 sm:p-6">
-        <Tabs defaultValue="weekly" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 [&>*]:min-h-[44px] sm:[&>*]:min-h-0 [&>*]:touch-manipulation">
-            <TabsTrigger value="weekly" className="text-xs sm:text-sm">Weekly Report</TabsTrigger>
-            <TabsTrigger value="monthly" className="text-xs sm:text-sm">Monthly Report</TabsTrigger>
-          </TabsList>
+        <TabGroup defaultValue="weekly" className="w-full">
+          <TabList className="grid w-full grid-cols-2 [&>*]:min-h-[44px] sm:[&>*]:min-h-0 [&>*]:touch-manipulation">
+            <Tab value="weekly" className="text-xs sm:text-sm">Weekly Report</Tab>
+            <Tab value="monthly" className="text-xs sm:text-sm">Monthly Report</Tab>
+          </TabList>
 
-          <TabsContent value="weekly" className="space-y-3 sm:space-y-4 mt-3 sm:mt-4">
+          <TabPanels>
+            <TabPanel value="weekly" className="space-y-3 sm:space-y-4 mt-3 sm:mt-4">
             {weeklyData ? (
               <div className="space-y-3 sm:space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
@@ -157,9 +158,9 @@ export const WeeklyMonthlyReports = React.memo(function WeeklyMonthlyReports({ e
             ) : (
               <p className="text-center text-muted-foreground py-6 sm:py-8 text-sm sm:text-base">No weekly data available</p>
             )}
-          </TabsContent>
+            </TabPanel>
 
-          <TabsContent value="monthly" className="space-y-3 sm:space-y-4 mt-3 sm:mt-4">
+            <TabPanel value="monthly" className="space-y-3 sm:space-y-4 mt-3 sm:mt-4">
             {monthlyData ? (
               <div className="space-y-3 sm:space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -195,8 +196,9 @@ export const WeeklyMonthlyReports = React.memo(function WeeklyMonthlyReports({ e
             ) : (
               <p className="text-center text-muted-foreground py-6 sm:py-8 text-sm sm:text-base">No monthly data available</p>
             )}
-          </TabsContent>
-        </Tabs>
+            </TabPanel>
+          </TabPanels>
+        </TabGroup>
       </CardContent>
     </Card>
   );

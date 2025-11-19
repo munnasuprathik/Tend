@@ -1,6 +1,6 @@
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { LiquidButton as Button } from "@/components/animate-ui/components/buttons/liquid";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
 class ErrorBoundary extends React.Component {
@@ -51,7 +51,7 @@ class ErrorBoundary extends React.Component {
               </details>
             )}
             <Button onClick={this.handleReset} variant="outline" className="w-full">
-              <RefreshCw className="h-4 w-4 mr-2" />
+              <RefreshCw />
               Try Again
             </Button>
           </CardContent>
