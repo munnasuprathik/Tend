@@ -55,10 +55,12 @@ export const StreakMilestones = React.memo(function StreakMilestones({ streakCou
   return (
     <div className="space-y-4">
       {/* Current Streak & Next Milestone */}
-      <Card>
+      <Card className="border border-border/30 hover:border-border/50 transition-all duration-300">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-indigo-600" />
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+              <TrendingUp className="h-5 w-5 text-primary" />
+            </div>
             Streak Milestones
           </CardTitle>
           <CardDescription>
@@ -68,25 +70,27 @@ export const StreakMilestones = React.memo(function StreakMilestones({ streakCou
         <CardContent className="space-y-4">
           {/* Next Milestone */}
           {milestones.nextMilestone && (
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="p-4 bg-primary/5 rounded-xl border border-primary/10 hover:border-primary/20 transition-colors">
               <div className="flex items-start justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  {getMilestoneIcon(milestones.nextMilestone)}
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-background border border-border/50">
+                    {getMilestoneIcon(milestones.nextMilestone)}
+                  </div>
                   <div>
-                    <p className="font-semibold text-blue-900">
+                    <p className="font-semibold text-foreground">
                       {milestones.nextMilestone} Day Milestone
                     </p>
-                    <p className="text-xs text-blue-700">
+                    <p className="text-xs text-muted-foreground">
                       {getMilestoneLabel(milestones.nextMilestone)} Achievement
                     </p>
                   </div>
                 </div>
-                <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300">
+                <Badge variant="outline" className="bg-background/50 backdrop-blur-sm border-primary/20 text-primary">
                   {milestones.daysUntilNext} days to go
                 </Badge>
               </div>
               {milestones.estimatedDate && (
-                <p className="text-xs text-muted-foreground mt-2">
+                <p className="text-xs text-muted-foreground mt-3 pl-14 border-l-2 border-primary/20 pl-3 ml-1">
                   Estimated date: {milestones.estimatedDate.toLocaleDateString()}
                 </p>
               )}
@@ -94,10 +98,12 @@ export const StreakMilestones = React.memo(function StreakMilestones({ streakCou
           )}
 
           {milestones.allAchieved && (
-            <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200 text-center">
-              <Trophy className="h-8 w-8 text-yellow-600 mx-auto mb-2" />
-              <p className="font-semibold text-yellow-900">Congratulations!</p>
-              <p className="text-sm text-yellow-700">You've achieved all milestones!</p>
+            <div className="p-6 bg-yellow-500/5 rounded-xl border border-yellow-500/20 text-center">
+              <div className="w-12 h-12 mx-auto bg-yellow-500/10 rounded-full flex items-center justify-center mb-3">
+                <Trophy className="h-6 w-6 text-yellow-600" />
+              </div>
+              <p className="font-semibold text-yellow-700">Congratulations!</p>
+              <p className="text-sm text-yellow-600/80">You've achieved all milestones!</p>
             </div>
           )}
         </CardContent>
@@ -105,7 +111,7 @@ export const StreakMilestones = React.memo(function StreakMilestones({ streakCou
 
       {/* Achieved Milestones */}
       {milestones.achieved.length > 0 && (
-        <Card>
+        <Card className="border border-border/30 hover:border-border/50 transition-all duration-300">
           <CardHeader>
             <CardTitle className="text-lg">Recently Achieved</CardTitle>
           </CardHeader>
@@ -114,16 +120,18 @@ export const StreakMilestones = React.memo(function StreakMilestones({ streakCou
               {milestones.achieved.map((days) => (
                 <div
                   key={days}
-                  className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200"
+                  className="flex items-center justify-between p-3 bg-green-500/5 rounded-xl border border-green-500/10 hover:border-green-500/20 transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    {getMilestoneIcon(days)}
+                    <div className="p-2 rounded-lg bg-background border border-border/50">
+                      {getMilestoneIcon(days)}
+                    </div>
                     <div>
-                      <p className="font-semibold text-green-900">{days} Day Milestone</p>
-                      <p className="text-xs text-green-700">{getMilestoneLabel(days)}</p>
+                      <p className="font-semibold text-foreground">{days} Day Milestone</p>
+                      <p className="text-xs text-muted-foreground">{getMilestoneLabel(days)}</p>
                     </div>
                   </div>
-                  <Badge className="bg-green-600">Achieved</Badge>
+                  <Badge className="bg-green-600 text-white border-0">Achieved</Badge>
                 </div>
               ))}
             </div>
@@ -133,9 +141,9 @@ export const StreakMilestones = React.memo(function StreakMilestones({ streakCou
 
       {/* Upcoming Milestones */}
       {milestones.upcoming.length > 0 && (
-        <Card>
+        <Card className="border border-border/30 hover:border-border/50 transition-all duration-300 opacity-80 hover:opacity-100">
           <CardHeader>
-            <CardTitle className="text-lg">Upcoming Milestones</CardTitle>
+            <CardTitle className="text-lg text-muted-foreground">Upcoming Milestones</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
@@ -144,18 +152,20 @@ export const StreakMilestones = React.memo(function StreakMilestones({ streakCou
                 return (
                   <div
                     key={days}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 opacity-75"
+                    className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border/40"
                   >
                     <div className="flex items-center gap-3">
-                      {getMilestoneIcon(days)}
+                      <div className="p-2 rounded-lg bg-background/50 border border-border/30 grayscale opacity-50">
+                        {getMilestoneIcon(days)}
+                      </div>
                       <div>
-                        <p className="font-semibold text-gray-700">{days} Day Milestone</p>
-                        <p className="text-xs text-gray-600">
+                        <p className="font-medium text-muted-foreground">{days} Day Milestone</p>
+                        <p className="text-xs text-muted-foreground/70">
                           {getMilestoneLabel(days)} • {daysToGo} days to go
                         </p>
                       </div>
                     </div>
-                    <Badge variant="outline" className="bg-gray-100 text-gray-600">
+                    <Badge variant="outline" className="text-muted-foreground bg-background/50">
                       Locked
                     </Badge>
                   </div>

@@ -84,11 +84,11 @@ export const StreakCalendar = React.memo(function StreakCalendar({
   };
 
   const getLevelColor = (level) => {
-    if (level === 0) return "bg-gray-100 hover:bg-gray-200";
-    if (level === 1) return "bg-emerald-200 hover:bg-emerald-300";
-    if (level === 2) return "bg-emerald-300 hover:bg-emerald-400";
-    if (level === 3) return "bg-emerald-400 hover:bg-emerald-500";
-    return "bg-emerald-500 hover:bg-emerald-600";
+    if (level === 0) return "bg-muted/30 hover:bg-muted/50";
+    if (level === 1) return "bg-orange-200 hover:bg-orange-300";
+    if (level === 2) return "bg-orange-300 hover:bg-orange-400";
+    if (level === 3) return "bg-orange-400 hover:bg-orange-500";
+    return "bg-orange-500 hover:bg-orange-600";
   };
 
   const goToPreviousMonth = () => {
@@ -130,23 +130,23 @@ export const StreakCalendar = React.memo(function StreakCalendar({
   };
 
   return (
-    <Card className="overflow-hidden bg-gradient-to-br from-white to-gray-50 shadow-sm">
+    <Card className="overflow-hidden border border-border/30 hover:border-border/50 transition-all duration-300 bg-card/50 backdrop-blur-sm">
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
         {/* Title */}
         <div className="text-center">
-          <h2 className="text-lg sm:text-xl font-bold text-gray-800">Your Motivation Streak</h2>
+          <h2 className="text-lg sm:text-xl font-bold text-foreground">Your Motivation Streak</h2>
         </div>
 
         {/* Month Navigation */}
         <div className="flex items-center justify-center gap-2 sm:gap-3">
           <button
             onClick={goToPreviousMonth}
-            className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+            className="p-2 rounded-full hover:bg-muted/50 transition-colors"
             aria-label="Previous month"
           >
-            <ChevronLeft className="h-5 w-5 text-gray-600" />
+            <ChevronLeft className="h-5 w-5 text-muted-foreground hover:text-foreground" />
           </button>
-          <span className="text-sm sm:text-base font-semibold text-gray-700 min-w-[140px] sm:min-w-[160px] text-center">
+          <span className="text-sm sm:text-base font-semibold text-foreground min-w-[140px] sm:min-w-[160px] text-center">
             {getMonthYear()}
           </span>
           <button
@@ -154,8 +154,8 @@ export const StreakCalendar = React.memo(function StreakCalendar({
             disabled={isCurrentMonth()}
             className={`p-2 rounded-full transition-colors ${
               isCurrentMonth() 
-                ? 'text-gray-300 cursor-not-allowed' 
-                : 'hover:bg-gray-100 text-gray-600'
+                ? 'text-muted-foreground/30 cursor-not-allowed' 
+                : 'hover:bg-muted/50 text-muted-foreground hover:text-foreground'
             }`}
             aria-label="Next month"
           >
@@ -169,9 +169,9 @@ export const StreakCalendar = React.memo(function StreakCalendar({
             <div
               key={index}
               onClick={() => handleDateClick(day)}
-              className={`w-10 h-10 rounded-md flex items-center justify-center text-xs font-medium transition-all duration-200 ${day.messageCount > 0 ? 'cursor-pointer' : 'cursor-default'} ${getLevelColor(day.level)} ${
+              className={`w-10 h-10 rounded-md flex items-center justify-center text-xs font-medium transition-all duration-300 ${day.messageCount > 0 ? 'cursor-pointer' : 'cursor-default'} ${getLevelColor(day.level)} ${
                 day.isToday 
-                  ? 'ring-2 ring-blue-400 ring-offset-2 shadow-md scale-105' 
+                  ? 'ring-2 ring-primary/50 ring-offset-2 shadow-md scale-105' 
                   : 'shadow-sm hover:shadow-md hover:scale-105'
               }`}
               title={
@@ -180,7 +180,7 @@ export const StreakCalendar = React.memo(function StreakCalendar({
                   : `${formatDate(day.date)} - No activity`
               }
             >
-              <span className={day.level > 0 ? 'text-white' : 'text-gray-500'}>
+              <span className={day.level > 0 ? 'text-white' : 'text-muted-foreground'}>
                 {day.dayNum}
               </span>
             </div>
@@ -189,11 +189,11 @@ export const StreakCalendar = React.memo(function StreakCalendar({
 
         {/* Date Details Dialog */}
         <Dialog open={selectedDate !== null} onOpenChange={(open) => !open && setSelectedDate(null)}>
-          <DialogContent from="top" showCloseButton={true} className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogContent from="top" showCloseButton={true} className="w-[95vw] max-w-md sm:max-w-2xl max-h-[85vh] overflow-y-auto p-4 sm:p-6">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Mail className="h-5 w-5" />
-                Emails sent on {selectedDate ? formatDate(selectedDate) : ''}
+              <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                <Mail className="h-5 w-5 text-primary" />
+                <span>Emails sent on {selectedDate ? formatDate(selectedDate) : ''}</span>
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 mt-4">
@@ -242,7 +242,7 @@ export const StreakCalendar = React.memo(function StreakCalendar({
         </div>
 
         {/* Color Legend */}
-        <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+        <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
           <span>Less</span>
           <div className="flex gap-1">
             {[0, 1, 2, 3, 4].map((level) => (

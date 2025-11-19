@@ -12,7 +12,7 @@ const notificationTypes = {
   warning: { icon: AlertTriangle, color: 'text-foreground bg-muted' },
 };
 
-export function NotificationList() {
+export function NotificationList({ className, showTrigger = true }) {
   const [notifications, setNotifications] = React.useState([]);
   const [isOpen, setIsOpen] = React.useState(false);
 
@@ -48,21 +48,21 @@ export function NotificationList() {
 
   return (
     <>
-      <div className="fixed top-4 right-4 z-[100]">
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => setIsOpen(!isOpen)}
-          className="relative shadow-lg"
-        >
-          <Bell />
-          {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-foreground text-background text-xs flex items-center justify-center font-semibold">
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
-          )}
-        </Button>
-      </div>
+      {showTrigger && (
+        <div className={cn(className || "fixed top-3 right-3 sm:top-4 sm:right-4 z-[100]")}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsOpen(!isOpen)}
+            className="relative shadow-sm hover:bg-background/80 bg-background/50 backdrop-blur-sm border border-border/40 h-9 w-9 sm:h-10 sm:w-10"
+          >
+            <Bell className="h-4 w-4 sm:h-5 sm:w-5" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-500" />
+            )}
+          </Button>
+        </div>
+      )}
 
       {isOpen && (
         <div className="fixed top-16 right-4 z-[100] w-96 max-w-[calc(100vw-2rem)]">

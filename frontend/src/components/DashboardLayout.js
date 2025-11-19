@@ -14,6 +14,7 @@ import {
   Flame
 } from "lucide-react";
 import { LiquidButton as Button } from "@/components/animate-ui/components/buttons/liquid";
+import { NotificationList } from "@/components/animate-ui/components/community/notification-list";
 import { cn } from "@/lib/utils";
 
 /**
@@ -50,8 +51,16 @@ export function DashboardLayout({
           </div>
           <div className="mt-auto pt-4 border-t border-border/40">
             <div className="flex flex-col items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center flex-shrink-0 border border-border/30">
-                <User className="h-5 w-5 text-muted-foreground" />
+              <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center flex-shrink-0 border border-border/30 overflow-hidden">
+                {user?.image_url ? (
+                  <img 
+                    src={user.image_url} 
+                    alt={user.name || "User"} 
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <User className="h-5 w-5 text-muted-foreground" />
+                )}
               </div>
               <Button
                 variant="ghost"
@@ -82,7 +91,7 @@ export function DashboardLayout({
       <aside
         className={cn(
           "fixed inset-y-0 z-50 lg:hidden",
-          "w-64 bg-background/95 backdrop-blur-md border-r border-border/40",
+          "w-72 max-w-[85vw] bg-background/95 backdrop-blur-md border-r border-border/40",
           "transform transition-transform duration-300 ease-in-out",
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
@@ -106,8 +115,16 @@ export function DashboardLayout({
           </div>
           <div className="mt-auto pt-4 border-t border-border/40">
             <div className="flex items-center gap-x-3 px-2 py-3 mb-3">
-              <div className="h-9 w-9 rounded-lg bg-muted/50 flex items-center justify-center flex-shrink-0 border border-border/30">
-                <User className="h-4.5 w-4.5 text-muted-foreground" />
+              <div className="h-9 w-9 rounded-lg bg-muted/50 flex items-center justify-center flex-shrink-0 border border-border/30 overflow-hidden">
+                {user?.image_url ? (
+                  <img 
+                    src={user.image_url} 
+                    alt={user.name || "User"} 
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <User className="h-4.5 w-4.5 text-muted-foreground" />
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground truncate">{user?.name || "User"}</p>
@@ -131,26 +148,33 @@ export function DashboardLayout({
       <div className="lg:pl-20">
         {/* Top header with navigation - Mobile & Desktop */}
         <div className="sticky top-0 z-40 border-b border-border/40 bg-background/95 backdrop-blur-md">
-          {/* Mobile header */}
-          <div className="flex h-16 shrink-0 items-center gap-x-4 px-4 sm:gap-x-6 sm:px-6 lg:hidden">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setSidebarOpen(true)}
-              className="h-9 w-9"
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-            <div className="flex items-center gap-2.5 flex-1">
-              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Sparkles className="h-4.5 w-4.5 text-primary" />
-              </div>
-              <span className="text-lg font-semibold text-foreground tracking-tight">Tend</span>
+          {/* Mobile header - Instagram Style */}
+          <div className="flex h-14 shrink-0 items-center justify-between px-4 lg:hidden bg-background border-b border-border/20">
+            {/* Left: Logo (Instagram style text) */}
+            <div className="flex items-center gap-2">
+              <span className="text-xl font-bold text-foreground tracking-tight font-sans">Tend</span>
+              <div className="h-1.5 w-1.5 rounded-full bg-primary/80 mb-3" /> {/* Subtle accent dot */}
+            </div>
+            
+            {/* Right: Actions */}
+            <div className="flex items-center gap-1">
+              {/* Notification Bell */}
+              <NotificationList className="relative top-0 right-0 z-10" />
+              
+              {/* Logout Button (Replaces Menu/Slider) */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onLogout}
+                className="h-9 w-9 text-muted-foreground hover:text-destructive transition-colors hover:bg-muted/50"
+              >
+                <LogOut className="h-5 w-5" />
+              </Button>
             </div>
           </div>
 
-          {/* Unified Tab Navigation - Clean Slider */}
-          <div className="px-4 sm:px-6 lg:px-10 py-2.5 border-t border-border/30 bg-background/95">
+          {/* Unified Tab Navigation - Desktop Only */}
+          <div className="hidden lg:block px-10 py-2.5 border-t border-border/30 bg-background/95">
             <div className="mx-auto max-w-7xl">
               <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
                 {navigation.map((item) => {
@@ -180,8 +204,8 @@ export function DashboardLayout({
           </div>
         </div>
 
-        {/* Main content area */}
-        <main className="py-6 sm:py-8 px-4 sm:px-6 lg:px-10">
+        {/* Main content area - Adjusted for bottom nav on mobile */}
+        <main className="py-6 sm:py-8 px-4 sm:px-6 lg:px-10 pb-24 lg:pb-8">
           <div className="mx-auto max-w-7xl">
             {/* Content */}
             <div className="space-y-6 sm:space-y-8">
@@ -189,6 +213,66 @@ export function DashboardLayout({
             </div>
           </div>
         </main>
+
+        {/* Mobile Bottom Dock Navigation - Instagram Style Refined */}
+        <div className="fixed bottom-0 inset-x-0 z-50 lg:hidden pb-safe-area-inset-bottom bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-t border-border/10 shadow-[0_-1px_3px_rgba(0,0,0,0.02)]">
+          <div className="flex items-center justify-between h-16 px-6 sm:px-12 max-w-md mx-auto">
+            {navigation.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.value;
+              
+              // Special case for Settings/Profile - mimic Instagram profile tab
+              if (item.value === "settings") {
+                 return (
+                   <button
+                    key={item.value}
+                    onClick={() => onTabChange && onTabChange(item.value)}
+                    className="flex items-center justify-center w-10 h-10 rounded-full transition-transform active:scale-90"
+                  >
+                    <div className={cn(
+                      "h-7 w-7 rounded-full overflow-hidden ring-offset-background transition-all duration-200",
+                      isActive ? "ring-2 ring-primary ring-offset-2" : "ring-1 ring-border"
+                    )}>
+                      <div className="h-full w-full bg-muted flex items-center justify-center">
+                         {user?.image_url ? (
+                            <img src={user.image_url} alt="Profile" className="h-full w-full object-cover" />
+                         ) : (
+                            <User className="h-4 w-4 text-muted-foreground" />
+                         )}
+                      </div>
+                    </div>
+                  </button>
+                 )
+              }
+
+              return (
+                <button
+                  key={item.value}
+                  onClick={() => onTabChange && onTabChange(item.value)}
+                  className="flex items-center justify-center w-10 h-10 rounded-lg active:scale-90 transition-transform hover:bg-muted/30"
+                >
+                  <div className="relative">
+                    <Icon 
+                      className={cn(
+                        "h-[26px] w-[26px] transition-all duration-300", 
+                        isActive 
+                          ? "stroke-[2.5px] text-primary scale-105" 
+                          : "stroke-[1.75px] text-muted-foreground hover:text-foreground"
+                      )} 
+                    />
+                    
+                    {/* Notification dot for Overview */}
+                    {item.name === "Overview" && (
+                       <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                         <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 border-2 border-background"></span>
+                       </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );

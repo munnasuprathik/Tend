@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { showNotification } from "@/components/animate-ui/components/community/notification-list";
 import { TIMEZONES } from "@/utils/timezones";
 import { formatDateTimeForTimezone } from "@/utils/timezoneFormatting";
+import { cn } from "@/lib/utils";
 
 // Use centralized API configuration
 import API_CONFIG from '@/config/api';
@@ -779,10 +780,10 @@ export function GoalsManager({ user, onUpdate }) {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2">
           <div className="flex-1">
             <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-              <Target className="h-5 w-5 flex-shrink-0" />
+              <Target className="h-5 w-5 flex-shrink-0 text-primary" />
               Goals & Motivational Emails
             </CardTitle>
-            <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+            <p className="hidden sm:block text-sm text-muted-foreground mt-1">
               Create multiple goals with custom schedules, personalities, and time-based send limits
             </p>
           </div>
@@ -793,21 +794,68 @@ export function GoalsManager({ user, onUpdate }) {
                 <span className="sm:inline">Create New Goal</span>
               </Button>
             </DialogTrigger>
-            <DialogContent from="top" showCloseButton={true} className="max-w-4xl max-h-[95vh] overflow-y-auto w-[95vw] sm:w-[90vw] md:w-full p-4 sm:p-6">
-              <DialogHeader className="pb-3 sm:pb-4">
-                <DialogTitle className="text-xl sm:text-2xl font-bold">{editingGoal ? "Edit Goal" : "Create New Goal"}</DialogTitle>
-              </DialogHeader>
+            <DialogContent from="top" showCloseButton={true} className="w-full h-[100dvh] sm:h-[85vh] sm:max-w-4xl p-0 bg-background border-border shadow-xl flex flex-col gap-0 sm:rounded-xl overflow-hidden">
+              {/* Sticky Header */}
+              <div className="flex-shrink-0 sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-4 sm:px-6 sm:py-5 border-b border-border/40 flex items-center justify-between">
+                <DialogHeader className="p-0 space-y-0 text-left w-full">
+                  <DialogTitle className="text-lg sm:text-2xl font-bold tracking-tight flex items-center gap-2">
+                    {editingGoal ? <Edit className="h-5 w-5 text-primary" /> : <Plus className="h-5 w-5 text-primary" />}
+                    {editingGoal ? "Edit Goal" : "New Goal"}
+                  </DialogTitle>
+                </DialogHeader>
+              </div>
               
-              <TabGroup value={activeTab} onChange={setActiveTab} className="w-full">
-                <TabList className="grid w-full grid-cols-2 sm:grid-cols-4 gap-1 sm:gap-1 [&>*]:min-h-[48px] sm:[&>*]:min-h-[40px] [&>*]:text-xs sm:[&>*]:text-sm [&>*]:touch-manipulation [&>*]:px-2 sm:[&>*]:px-3">
-                  <Tab value="basic" className="font-medium">Basic</Tab>
-                  <Tab value="content" className="font-medium">Content</Tab>
-                  <Tab value="schedules" className="font-medium">Schedules</Tab>
-                  <Tab value="limits" className="font-medium">Time Limits</Tab>
-                </TabList>
+              {/* Layout: Split View on Desktop, Stacked on Mobile */}
+              <div className="flex-1 w-full relative text-foreground overflow-hidden flex flex-col sm:flex-row bg-background">
+                <TabGroup value={activeTab} onChange={setActiveTab} className="w-full h-full flex flex-col sm:flex-row">
+                  
+                  {/* Navigation Sidebar */}
+                  <div className="shrink-0 z-20 bg-background sm:bg-muted/10 border-b sm:border-b-0 sm:border-r border-border/40 sm:w-64 h-auto sm:h-full">
+                    <TabList className="flex sm:flex-col w-full h-full p-2 sm:p-4 gap-1 sm:gap-2 overflow-x-auto sm:overflow-y-auto scrollbar-hide bg-transparent items-stretch sm:justify-start">
+                      <Tab value="basic" className={cn(
+                        "flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 whitespace-nowrap ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                        activeTab === "basic" 
+                          ? "bg-secondary text-secondary-foreground sm:bg-background sm:text-foreground sm:shadow-sm" 
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      )}>
+                        <Target className="h-4 w-4" />
+                        <span>Basic Details</span>
+                      </Tab>
+                      <Tab value="content" className={cn(
+                        "flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 whitespace-nowrap ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                        activeTab === "content" 
+                          ? "bg-secondary text-secondary-foreground sm:bg-background sm:text-foreground sm:shadow-sm" 
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      )}>
+                        <Sparkles className="h-4 w-4" />
+                        <span>Content</span>
+                      </Tab>
+                      <Tab value="schedules" className={cn(
+                        "flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 whitespace-nowrap ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                        activeTab === "schedules" 
+                          ? "bg-secondary text-secondary-foreground sm:bg-background sm:text-foreground sm:shadow-sm" 
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      )}>
+                        <Calendar className="h-4 w-4" />
+                        <span>Schedules</span>
+                      </Tab>
+                      <Tab value="limits" className={cn(
+                        "flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 whitespace-nowrap ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                        activeTab === "limits" 
+                          ? "bg-secondary text-secondary-foreground sm:bg-background sm:text-foreground sm:shadow-sm" 
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      )}>
+                        <Timer className="h-4 w-4" />
+                        <span>Limits</span>
+                      </Tab>
+                    </TabList>
+                  </div>
 
-                <TabPanels>
-                  <TabPanel value="basic" className="space-y-5 sm:space-y-6 mt-4 sm:mt-6">
+                  {/* Content Panel */}
+                  <div className="flex-1 h-full overflow-y-auto bg-background/50 scroll-smooth">
+
+                  <TabPanels className="w-full max-w-3xl mx-auto p-4 sm:p-8 pb-32 sm:pb-12">
+                    <TabPanel value="basic" className="space-y-6 focus:outline-none w-full">
                   <div className="space-y-2">
                     <Label className="text-base sm:text-lg font-semibold">Goal Title *</Label>
                     <Input
@@ -843,28 +891,44 @@ export function GoalsManager({ user, onUpdate }) {
                   </div>
                   </TabPanel>
 
-                  <TabPanel value="content" className="space-y-5 sm:space-y-6 mt-4 sm:mt-6">
-                  <div className="space-y-2">
-                    <Label className="text-base sm:text-lg font-semibold">Content Mode *</Label>
-                    <Select
-                      value={formData.mode}
-                      onValueChange={(value) => setFormData({ ...formData, mode: value, personality_id: "", tone: "", custom_text: "" })}
-                      className="mt-1"
-                    >
-                      <SelectTrigger className="text-base">
-                        <SelectValue placeholder="Select content mode" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="personality">Personality</SelectItem>
-                        <SelectItem value="tone">Tone</SelectItem>
-                        <SelectItem value="custom">Custom</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs sm:text-sm text-muted-foreground">Choose how you want your messages to be generated</p>
+                  <TabPanel value="content" className="space-y-6 focus:outline-none w-full">
+                  <div className="space-y-3">
+                    <Label className="text-base sm:text-lg font-semibold">How should we write your emails?</Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {[
+                        { id: "personality", icon: Sparkles, title: "Personality", desc: "Use a famous persona" },
+                        { id: "tone", icon: Zap, title: "Tone", desc: "Set a specific mood" },
+                        { id: "custom", icon: Settings, title: "Custom", desc: "Write your own style" }
+                      ].map((option) => {
+                        const Icon = option.icon;
+                        const isSelected = formData.mode === option.id;
+                        return (
+                          <div 
+                            key={option.id}
+                            onClick={() => setFormData({ ...formData, mode: option.id, personality_id: "", tone: "", custom_text: "" })}
+                            className={cn(
+                              "cursor-pointer relative flex flex-col items-center text-center p-4 rounded-xl border-2 transition-all duration-200 hover:bg-accent/5",
+                              isSelected 
+                                ? "border-primary bg-primary/5 shadow-sm" 
+                                : "border-border/50 hover:border-primary/30"
+                            )}
+                          >
+                            <div className={cn(
+                              "p-2 rounded-full mb-2 transition-colors",
+                              isSelected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                            )}>
+                              <Icon className="h-5 w-5" />
+                            </div>
+                            <h3 className="font-semibold text-sm mb-0.5">{option.title}</h3>
+                            <p className="text-xs text-muted-foreground">{option.desc}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {formData.mode === "personality" && (
-                    <div className="space-y-2">
+                    <div className="space-y-2 animate-in fade-in zoom-in-95 duration-300">
                       <Label className="text-base sm:text-lg font-semibold">Select Personality *</Label>
                       {famousPersonalities.length === 0 ? (
                         <div className="mt-1 p-4 bg-muted border border-border rounded-lg">
@@ -881,7 +945,7 @@ export function GoalsManager({ user, onUpdate }) {
                             }}
                             className="mt-1"
                           >
-                            <SelectTrigger className="text-base">
+                            <SelectTrigger className="text-base h-12">
                               <SelectValue placeholder="Choose a personality">
                                 {(() => {
                                   // Display the personality name, not the ID
@@ -912,7 +976,7 @@ export function GoalsManager({ user, onUpdate }) {
                                   <SelectItem 
                                     key={personality} 
                                     value={personality} 
-                                    className="text-base cursor-pointer hover:bg-muted"
+                                    className="text-base cursor-pointer hover:bg-muted py-3"
                                   >
                                     {personality}
                                   </SelectItem>
@@ -929,7 +993,7 @@ export function GoalsManager({ user, onUpdate }) {
                   )}
 
                   {formData.mode === "tone" && (
-                    <div className="space-y-2">
+                    <div className="space-y-2 animate-in fade-in zoom-in-95 duration-300">
                       <Label className="text-base sm:text-lg font-semibold">Select Tone *</Label>
                       {tones.length === 0 ? (
                         <div className="mt-1 p-4 bg-muted border border-border rounded-lg">
@@ -944,7 +1008,7 @@ export function GoalsManager({ user, onUpdate }) {
                             onValueChange={(value) => setFormData({ ...formData, tone: value })}
                             className="mt-1"
                           >
-                            <SelectTrigger className="text-base">
+                            <SelectTrigger className="text-base h-12">
                               <SelectValue placeholder="Choose a tone">
                                 {formData.tone || "Choose a tone"}
                               </SelectValue>
@@ -952,7 +1016,7 @@ export function GoalsManager({ user, onUpdate }) {
                             <SelectContent className="max-h-[300px]">
                               {tones && tones.length > 0 ? (
                                 tones.map((tone) => (
-                                  <SelectItem key={tone} value={tone} className="text-base">
+                                  <SelectItem key={tone} value={tone} className="text-base py-3">
                                     {tone}
                                   </SelectItem>
                                 ))
@@ -968,13 +1032,13 @@ export function GoalsManager({ user, onUpdate }) {
                   )}
 
                   {formData.mode === "custom" && (
-                    <div className="space-y-2">
+                    <div className="space-y-2 animate-in fade-in zoom-in-95 duration-300">
                       <Label className="text-base sm:text-lg font-semibold">Custom Style Guide *</Label>
                       <Textarea
                         value={formData.custom_text}
                         onChange={(e) => setFormData({ ...formData, custom_text: e.target.value })}
                         placeholder="Describe the writing style you want (e.g., 'Write like a friendly mentor, use short sentences, be encouraging but realistic')..."
-                        className="mt-1 text-base"
+                        className="mt-1 text-base min-h-[150px]"
                         rows={6}
                       />
                       <p className="text-xs sm:text-sm text-muted-foreground">Describe how you want your messages to be written</p>
@@ -982,32 +1046,36 @@ export function GoalsManager({ user, onUpdate }) {
                   )}
                   </TabPanel>
 
-                  <TabPanel value="schedules" className="space-y-5 sm:space-y-6 mt-4 sm:mt-6">
+                  <TabPanel value="schedules" className="space-y-6 focus:outline-none w-full">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 pb-3 border-b">
                     <div>
-                      <Label className="text-base sm:text-lg font-semibold">Schedules *</Label>
-                      <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">Configure when emails should be sent</p>
+                      <Label className="text-base sm:text-lg font-semibold">Delivery Schedule</Label>
+                      <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">When should we send you emails?</p>
                     </div>
-                    <Button type="button" variant="outline" size="sm" onClick={handleAddSchedule} className="w-full sm:w-auto min-w-[140px]">
-                      <Plus />
-                      <span>Add Schedule</span>
+                    <Button type="button" variant="outline" size="sm" onClick={handleAddSchedule} className="w-full sm:w-auto min-w-[140px] h-9">
+                      <Plus className="mr-1.5 h-4 w-4" />
+                      <span>Add Time</span>
                     </Button>
                   </div>
                   
                   <div className="space-y-4">
                     {formData.schedules.map((schedule, index) => (
-                      <Card key={index} className="p-4 sm:p-5 border-2">
-                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-0 mb-4 pb-3 border-b">
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-5 w-5 text-primary flex-shrink-0" />
-                            <span className="font-semibold text-base sm:text-lg">Schedule {index + 1}</span>
+                      <div key={index} className="p-4 sm:p-5 rounded-xl border border-border/40 bg-accent/10 hover:bg-accent/20 transition-colors">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-background border border-border shadow-sm text-sm font-semibold text-muted-foreground">
+                              {index + 1}
+                            </div>
+                            <span className="font-medium text-base">Schedule Config</span>
                           </div>
-                          <div className="flex items-center gap-3 flex-shrink-0">
-                            <div className="flex items-center gap-2">
-                              <Label className="text-sm cursor-pointer">Active</Label>
+                          <div className="flex items-center gap-3 flex-shrink-0 self-end sm:self-auto">
+                            <div className="flex items-center gap-2 bg-background/50 px-3 py-1.5 rounded-full border border-border/30">
+                              <Label className="text-xs font-medium cursor-pointer" htmlFor={`active-${index}`}>Active</Label>
                               <Switch
+                                id={`active-${index}`}
                                 checked={schedule.active}
                                 onCheckedChange={(checked) => handleUpdateSchedule(index, "active", checked)}
+                                className="scale-75 origin-right"
                               />
                             </div>
                             {formData.schedules.length > 1 && (
@@ -1016,7 +1084,7 @@ export function GoalsManager({ user, onUpdate }) {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => handleRemoveSchedule(index)}
-                                className="h-9 w-9 sm:h-8 sm:w-8 text-destructive hover:text-destructive"
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full"
                               >
                                 <X className="h-4 w-4" />
                               </Button>
@@ -1024,42 +1092,42 @@ export function GoalsManager({ user, onUpdate }) {
                           </div>
                         </div>
                         
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <Label className="text-xs sm:text-sm">Frequency</Label>
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
+                          <div className="sm:col-span-4">
+                            <Label className="text-xs text-muted-foreground mb-1.5 block">Frequency</Label>
                             <Select
                               value={schedule.type}
                               onValueChange={(value) => handleUpdateSchedule(index, "type", value)}
                             >
-                              <SelectTrigger className="h-9">
+                              <SelectTrigger className="h-10 bg-background">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="daily">Daily</SelectItem>
-                                <SelectItem value="weekly">Weekly</SelectItem>
-                                <SelectItem value="monthly">Monthly</SelectItem>
+                                <SelectItem value="daily">Daily (Every Day)</SelectItem>
+                                <SelectItem value="weekly">Weekly (Specific Days)</SelectItem>
+                                <SelectItem value="monthly">Monthly (Specific Dates)</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
-                          <div>
-                            <Label className="text-xs sm:text-sm">Time</Label>
+                          <div className="sm:col-span-3">
+                            <Label className="text-xs text-muted-foreground mb-1.5 block">Time</Label>
                             <Input
                               type="time"
                               value={schedule.time}
                               onChange={(e) => handleUpdateSchedule(index, "time", e.target.value)}
-                              className="h-9"
+                              className="h-10 bg-background"
                             />
                           </div>
-                          <div className="col-span-2">
-                            <Label className="text-xs sm:text-sm">Timezone</Label>
+                          <div className="sm:col-span-5">
+                            <Label className="text-xs text-muted-foreground mb-1.5 block">Timezone</Label>
                             <Select
                               value={schedule.timezone}
                               onValueChange={(value) => handleUpdateSchedule(index, "timezone", value)}
                             >
-                              <SelectTrigger className="h-9">
+                              <SelectTrigger className="h-10 bg-background">
                                 <SelectValue />
                               </SelectTrigger>
-                              <SelectContent className="max-h-[200px]">
+                              <SelectContent className="max-h-[250px]">
                                 {TIMEZONES.map((tz) => (
                                   <SelectItem key={tz.value} value={tz.value}>
                                     {tz.label}
@@ -1068,14 +1136,13 @@ export function GoalsManager({ user, onUpdate }) {
                               </SelectContent>
                             </Select>
                           </div>
-                          <div className="col-span-2">
-                            <Label className="text-xs sm:text-sm">Deadline (Optional)</Label>
+                          
+                          <div className="sm:col-span-12">
+                            <Label className="text-xs text-muted-foreground mb-1.5 block">Stop Sending After (Optional)</Label>
                             <Input
                               type="datetime-local"
                               value={schedule.end_date ? (() => {
-                                // Convert UTC ISO string to local datetime-local format
                                 const utcDate = new Date(schedule.end_date);
-                                // Get local date components
                                 const year = utcDate.getFullYear();
                                 const month = String(utcDate.getMonth() + 1).padStart(2, '0');
                                 const day = String(utcDate.getDate()).padStart(2, '0');
@@ -1086,54 +1153,54 @@ export function GoalsManager({ user, onUpdate }) {
                               onChange={(e) => {
                                 const value = e.target.value;
                                 if (value) {
-                                  // Convert local datetime to UTC ISO string
-                                  // datetime-local gives us local time, we need to convert to UTC
                                   const localDate = new Date(value);
-                                  // Create ISO string in UTC
                                   const isoString = localDate.toISOString();
                                   handleUpdateSchedule(index, "end_date", isoString);
                                 } else {
                                   handleUpdateSchedule(index, "end_date", null);
                                 }
                               }}
-                              className="h-9"
-                              placeholder="Leave empty for no deadline"
+                              className="h-10 bg-background"
+                              placeholder="Select a date to stop emails"
                             />
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Emails will stop being sent after this date and time
-                            </p>
                           </div>
                         </div>
 
                         {schedule.type === "weekly" && (
-                          <div className="mt-4 space-y-2">
-                            <Label className="text-sm sm:text-base font-medium block">Weekdays</Label>
+                          <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <Label className="text-xs text-muted-foreground mb-2 block">Repeat On</Label>
                             <div className="flex flex-wrap gap-2">
-                              {WEEKDAYS.map((day) => (
-                                <Button
-                                  key={day.value}
-                                  type="button"
-                                  variant={schedule.weekdays?.includes(day.value) ? "default" : "outline"}
-                                  size="sm"
-                                  className="h-10 sm:h-9 text-sm min-w-[44px] sm:min-w-0 px-3 sm:px-2 touch-manipulation"
-                                  onClick={() => {
-                                    const weekdays = schedule.weekdays || [];
-                                    const newWeekdays = weekdays.includes(day.value)
-                                      ? weekdays.filter(d => d !== day.value)
-                                      : [...weekdays, day.value];
-                                    handleUpdateSchedule(index, "weekdays", newWeekdays);
-                                  }}
-                                >
-                                  {day.short}
-                                </Button>
-                              ))}
+                              {WEEKDAYS.map((day) => {
+                                const isSelected = schedule.weekdays?.includes(day.value);
+                                return (
+                                  <button
+                                    key={day.value}
+                                    type="button"
+                                    onClick={() => {
+                                      const weekdays = schedule.weekdays || [];
+                                      const newWeekdays = weekdays.includes(day.value)
+                                        ? weekdays.filter(d => d !== day.value)
+                                        : [...weekdays, day.value];
+                                      handleUpdateSchedule(index, "weekdays", newWeekdays);
+                                    }}
+                                    className={cn(
+                                      "h-9 px-3 rounded-md text-sm font-medium transition-all border",
+                                      isSelected
+                                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                                        : "bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
+                                    )}
+                                  >
+                                    {day.short}
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
                         )}
 
                         {schedule.type === "monthly" && (
-                          <div className="mt-3">
-                            <Label className="text-xs sm:text-sm">Days of Month (comma-separated, 1-31)</Label>
+                          <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <Label className="text-xs text-muted-foreground mb-1.5 block">Days of Month (e.g., 1, 15, 30)</Label>
                             <Input
                               value={schedule.monthly_dates?.join(",") || ""}
                               onChange={(e) => {
@@ -1144,16 +1211,16 @@ export function GoalsManager({ user, onUpdate }) {
                                 handleUpdateSchedule(index, "monthly_dates", dates);
                               }}
                               placeholder="1, 15, 30"
-                              className="h-9 mt-1"
+                              className="h-10 bg-background"
                             />
                           </div>
                         )}
-                      </Card>
+                      </div>
                     ))}
                   </div>
                   </TabPanel>
 
-                  <TabPanel value="limits" className="space-y-5 sm:space-y-6 mt-4 sm:mt-6">
+                  <TabPanel value="limits" className="space-y-6 focus:outline-none w-full">
                   <Alert className="bg-blue-50 border-blue-200">
                     <Info className="h-5 w-5 text-blue-600" />
                     <AlertDescription className="text-sm sm:text-base text-blue-900">
@@ -1198,7 +1265,7 @@ export function GoalsManager({ user, onUpdate }) {
                     
                     <div className="space-y-4">
                       {formData.send_time_windows.map((window, index) => (
-                        <Card key={index} className="p-4 sm:p-5 border-2 border-primary/20">
+                        <Card key={index} className="p-4 sm:p-5 border-2 border-primary/20 w-full">
                           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-0 mb-4 pb-3 border-b">
                             <div className="flex items-center gap-2">
                               <Timer className="h-5 w-5 text-primary flex-shrink-0" />
@@ -1276,67 +1343,72 @@ export function GoalsManager({ user, onUpdate }) {
                   </div>
                   </TabPanel>
                 </TabPanels>
+                </div>
               </TabGroup>
 
-              <DialogFooter className="mt-6 sm:mt-8 pt-4 border-t flex-col sm:flex-row gap-3 sm:gap-2">
-                <Button 
-                  variant="outline" 
-                  onClick={handleCloseModal} 
-                  className="w-full sm:w-auto order-2 sm:order-1 min-h-[48px] sm:min-h-0"
-                >
-                  Cancel
-                </Button>
-                <Button 
-                  onClick={handleSubmit} 
-                  disabled={loading} 
-                  className="w-full sm:w-auto order-1 sm:order-2 min-h-[48px] sm:min-h-0 font-semibold"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="animate-spin" />
-                      <span className="sm:inline">Saving...</span>
-                    </>
-                  ) : editingGoal ? "Update Goal" : "Create Goal"}
-                </Button>
-              </DialogFooter>
+              </div>
+              {/* Sticky Footer for Mobile */}
+              <div className="flex-shrink-0 sticky bottom-0 z-20 bg-background border-t border-border/40 p-4 sm:p-0 sm:bg-transparent sm:border-0 sm:relative sm:mt-8 sm:pt-4 sm:border-t-0 w-full">
+                <DialogFooter className="flex-col sm:flex-row gap-3 sm:gap-2 w-full">
+                  <Button 
+                    variant="outline" 
+                    onClick={handleCloseModal} 
+                    className="w-full sm:w-auto order-2 sm:order-1 h-12 sm:h-10 text-base"
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    onClick={handleSubmit} 
+                    disabled={loading} 
+                    className="w-full sm:w-auto order-1 sm:order-2 h-12 sm:h-10 text-base font-semibold shadow-md"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="animate-spin mr-2" />
+                        Saving...
+                      </>
+                    ) : editingGoal ? "Update Goal" : "Create Goal"}
+                  </Button>
+                </DialogFooter>
+              </div>
             </DialogContent>
           </Dialog>
         </div>
       </CardHeader>
       <CardContent className="space-y-3 sm:space-y-4 p-4 sm:p-6">
         {/* Summary Cards - Enhanced Minimalistic Design */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
           <Card className="border border-border/30 hover:border-border/50 hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm group">
-            <CardContent className="p-5">
-              <div className="flex items-center gap-2.5 mb-4">
+            <CardContent className="p-4 sm:p-5 flex items-center justify-between sm:block">
+              <div className="flex items-center gap-2.5 sm:mb-4">
                 <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 group-hover:bg-blue-500/15 transition-colors">
                   <Target className="h-4 w-4 text-blue-500" />
                 </div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Goals</p>
               </div>
-              <p className="text-3xl font-bold tracking-tight text-foreground">{counts.totalGoals}</p>
+              <p className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">{counts.totalGoals}</p>
             </CardContent>
           </Card>
           <Card className="border border-border/30 hover:border-border/50 hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm group">
-            <CardContent className="p-5">
-              <div className="flex items-center gap-2.5 mb-4">
+            <CardContent className="p-4 sm:p-5 flex items-center justify-between sm:block">
+              <div className="flex items-center gap-2.5 sm:mb-4">
                 <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/20 group-hover:bg-green-500/15 transition-colors">
                   <Play className="h-4 w-4 text-green-500" />
                 </div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active</p>
               </div>
-              <p className="text-3xl font-bold tracking-tight text-foreground">{counts.activeGoals}</p>
+              <p className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">{counts.activeGoals}</p>
             </CardContent>
           </Card>
           <Card className="border border-border/30 hover:border-border/50 hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm group">
-            <CardContent className="p-5">
-              <div className="flex items-center gap-2.5 mb-4">
+            <CardContent className="p-4 sm:p-5 flex items-center justify-between sm:block">
+              <div className="flex items-center gap-2.5 sm:mb-4">
                 <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20 group-hover:bg-purple-500/15 transition-colors">
                   <Clock className="h-4 w-4 text-purple-500" />
                 </div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Upcoming</p>
               </div>
-              <p className="text-3xl font-bold tracking-tight text-foreground">{counts.upcomingSends}</p>
+              <p className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">{counts.upcomingSends}</p>
             </CardContent>
           </Card>
         </div>
@@ -1371,35 +1443,35 @@ export function GoalsManager({ user, onUpdate }) {
                   {/* Subtle background pattern */}
                   <div className="absolute inset-0 bg-grid-pattern opacity-[0.015]" />
                   <CardContent className="p-3 sm:p-4 md:p-5 relative">
-                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                      <div className="flex-1 min-w-0 w-full sm:w-auto">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                      <div className="flex-1 min-w-0 w-full">
                         {/* Title and Badges - Stack on mobile */}
-                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2 sm:mb-3">
-                          <div className="flex items-center gap-2 flex-1 min-w-0 order-1 sm:order-none">
-                            <div className={`flex-shrink-0 w-8 h-8 rounded-full ${colors.numberBg} border-2 ${colors.numberBorder} flex items-center justify-center`}>
+                        <div className="flex flex-col gap-2 mb-3">
+                          <div className="flex items-start gap-3">
+                            <div className={`flex-shrink-0 w-8 h-8 rounded-full ${colors.numberBg} border-2 ${colors.numberBorder} flex items-center justify-center mt-0.5`}>
                               <span className={`${colors.numberText} font-bold text-sm`}>#{goalNumber}</span>
                             </div>
-                            <h3 className="font-semibold text-base sm:text-lg leading-snug break-words overflow-wrap-anywhere flex-1 min-w-0">{goal.title || "Untitled Goal"}</h3>
-                          </div>
-                          <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap order-2 sm:order-none">
-                            {goal.isMainGoal && (
-                              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs whitespace-nowrap">
-                                Primary Goal
-                              </Badge>
-                            )}
-                            <Badge variant={isActive ? "default" : "secondary"} className="gap-1 text-xs whitespace-nowrap">
-                              {isActive ? (
-                                <>
-                                  <Play className="h-3 w-3 flex-shrink-0" />
-                                  Active
-                                </>
-                              ) : (
-                                <>
-                                  <Pause className="h-3 w-3 flex-shrink-0" />
-                                  Paused
-                                </>
-                              )}
-                            </Badge>
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-semibold text-lg leading-tight break-words mb-1.5">{goal.title || "Untitled Goal"}</h3>
+                              <div className="flex flex-wrap gap-2">
+                                {goal.isMainGoal && (
+                                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] h-5">
+                                    Primary
+                                  </Badge>
+                                )}
+                                <Badge variant={isActive ? "default" : "secondary"} className="gap-1 text-[10px] h-5">
+                                  {isActive ? (
+                                    <>
+                                      <Play className="h-2.5 w-2.5" /> Active
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Pause className="h-2.5 w-2.5" /> Paused
+                                    </>
+                                  )}
+                                </Badge>
+                              </div>
+                            </div>
                           </div>
                         </div>
                         {/* Description - Always show if available */}
@@ -1445,45 +1517,49 @@ export function GoalsManager({ user, onUpdate }) {
                           )}
                         </div>
                       </div>
-                      {/* Action Buttons - All goals have equal functionality */}
-                      <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 justify-end sm:justify-start">
+                      {/* Action Buttons - Optimized for touch */}
+                      <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 justify-end w-full sm:w-auto border-t sm:border-t-0 border-border/40 pt-3 sm:pt-0 mt-1 sm:mt-0">
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleViewHistory(goal)}
-                          className="h-9 w-9 sm:h-8 sm:w-8 p-0"
-                          title="View message history"
+                          className="flex-1 sm:flex-none h-10 sm:h-8 px-3 sm:px-2.5 text-muted-foreground hover:text-foreground"
+                          title="History"
                         >
-                          <History className="h-4 w-4" />
+                          <History className="h-4 w-4 mr-2 sm:mr-0" />
+                          <span className="sm:hidden text-xs font-medium">History</span>
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleToggleActive(goal)}
                           disabled={loading}
-                          className="h-9 w-9 sm:h-8 sm:w-8 p-0"
-                          title={isActive ? "Pause goal" : "Activate goal"}
+                          className="flex-1 sm:flex-none h-10 sm:h-8 px-3 sm:px-2.5 text-muted-foreground hover:text-foreground"
+                          title={isActive ? "Pause" : "Activate"}
                         >
-                          {isActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                          {isActive ? <Pause className="h-4 w-4 mr-2 sm:mr-0" /> : <Play className="h-4 w-4 mr-2 sm:mr-0" />}
+                          <span className="sm:hidden text-xs font-medium">{isActive ? "Pause" : "Start"}</span>
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleOpenModal(goal)}
-                          className="h-9 w-9 sm:h-8 sm:w-8 p-0"
-                          title="Edit goal"
+                          className="flex-1 sm:flex-none h-10 sm:h-8 px-3 sm:px-2.5 text-muted-foreground hover:text-foreground"
+                          title="Edit"
                         >
-                          <Edit className="h-4 w-4" />
+                          <Edit className="h-4 w-4 mr-2 sm:mr-0" />
+                          <span className="sm:hidden text-xs font-medium">Edit</span>
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDelete(goal.id)}
                           disabled={loading}
-                          className="h-9 w-9 sm:h-8 sm:w-8 p-0 text-destructive hover:text-destructive"
-                          title="Delete goal"
+                          className="flex-1 sm:flex-none h-10 sm:h-8 px-3 sm:px-2.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          title="Delete"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4 mr-2 sm:mr-0" />
+                          <span className="sm:hidden text-xs font-medium">Delete</span>
                         </Button>
                       </div>
                     </div>
@@ -1497,72 +1573,92 @@ export function GoalsManager({ user, onUpdate }) {
 
       {/* Goal History Dialog */}
       <Dialog open={selectedGoalHistory !== null} onOpenChange={(open) => !open && setSelectedGoalHistory(null)}>
-        <DialogContent from="top" showCloseButton={true} className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Message History: {selectedGoalHistory?.title}</DialogTitle>
-          </DialogHeader>
+        <DialogContent from="top" showCloseButton={true} className="w-[95vw] max-w-3xl h-[80vh] p-0 bg-background border-border shadow-xl flex flex-col sm:rounded-xl overflow-hidden">
+          <div className="flex-shrink-0 sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-4 border-b border-border/40">
+            <DialogHeader className="p-0 space-y-1 text-left pr-8">
+              <DialogTitle className="text-lg font-bold tracking-tight truncate">
+                Message History
+              </DialogTitle>
+              {selectedGoalHistory && (
+                <p className="text-sm text-muted-foreground truncate">
+                  {selectedGoalHistory.title}
+                </p>
+              )}
+            </DialogHeader>
+          </div>
           
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {historyLoading ? (
             <div className="py-12 text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
               <div>Loading history...</div>
             </div>
           ) : goalHistory.length === 0 ? (
-            <div className="py-12 text-center text-muted-foreground">
+            <div className="py-12 text-center text-muted-foreground flex flex-col items-center justify-center h-full">
               <Mail className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No messages sent yet</p>
+              <p className="text-lg font-medium text-foreground">No messages sent yet</p>
+              <p className="text-sm text-muted-foreground">Messages will appear here once sent.</p>
             </div>
           ) : (
             <div className="space-y-3">
               {goalHistory.map((msg) => (
-                <Card key={msg.id} className={msg.status === "sent" ? "" : "opacity-60"}>
+                <Card key={msg.id} className={cn("w-full", msg.status === "sent" ? "" : "opacity-80")}>
                   <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-2">
                           <Badge variant={msg.status === "sent" ? "default" : msg.status === "failed" ? "destructive" : "secondary"}>
                             {msg.status}
                           </Badge>
-                          {msg.generated_subject && (
-                            <span className="font-semibold text-sm">{msg.generated_subject}</span>
-                          )}
+                          <span className="text-xs text-muted-foreground">
+                            {formatDateTimeForTimezone(msg.scheduled_for, selectedGoalHistory?.schedules?.[0]?.timezone || "UTC", { includeDate: true, includeTime: true })}
+                          </span>
                         </div>
-                        {msg.generated_body && (
-                          <p className="text-sm text-muted-foreground whitespace-pre-wrap mb-3 bg-muted/50 p-3 rounded">
+                      </div>
+                      
+                      <div className="bg-muted/40 p-3 rounded-md border border-border/50 min-h-[60px]">
+                        {msg.generated_subject && (
+                          <p className="font-semibold text-sm mb-1">{msg.generated_subject}</p>
+                        )}
+                        
+                        {msg.generated_body ? (
+                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">
                             {msg.generated_body}
                           </p>
-                        )}
-                        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            <span>
-                              Scheduled: {formatDateTimeForTimezone(msg.scheduled_for, selectedGoalHistory?.schedules?.[0]?.timezone || "UTC", { includeDate: true, includeTime: true })}
-                            </span>
-                          </div>
-                          {msg.sent_at && (
-                            <div className="flex items-center gap-1">
-                              <Mail className="h-3 w-3" />
-                              <span>
-                                Sent: {formatDateTimeForTimezone(msg.sent_at, selectedGoalHistory?.schedules?.[0]?.timezone || "UTC", { includeDate: true, includeTime: true })}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        {msg.error_message && (
-                          <Alert variant="destructive" className="mt-3">
-                            <X className="h-4 w-4" />
-                            <AlertDescription className="text-xs">
-                              {msg.error_message}
-                            </AlertDescription>
-                          </Alert>
+                        ) : (
+                          <p className="text-sm text-muted-foreground italic flex items-center gap-2">
+                            <Sparkles className="h-3 w-3" />
+                            {msg.status === 'pending' ? 'Content will be generated on schedule' : 
+                             msg.status === 'skipped' ? 'Message was skipped' : 
+                             msg.status === 'failed' ? 'Generation failed' : 'No content available'}
+                          </p>
                         )}
                       </div>
+                      
+                      {msg.error_message && (
+                        <Alert variant="destructive" className="py-2">
+                          <X className="h-4 w-4" />
+                          <AlertDescription className="text-xs">
+                            {msg.error_message}
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                      
+                      {msg.sent_at && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                          <Mail className="h-3 w-3" />
+                          <span>
+                            Sent: {formatDateTimeForTimezone(msg.sent_at, selectedGoalHistory?.schedules?.[0]?.timezone || "UTC", { includeDate: true, includeTime: true })}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
               ))}
             </div>
           )}
+          </div>
         </DialogContent>
       </Dialog>
     </Card>

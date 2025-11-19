@@ -529,50 +529,51 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
                           {message.rating ? 'Update Rating' : 'Rate This Message'}
                         </Button>
                       </DialogTrigger>
-                      <DialogContent from="top" showCloseButton={true} className="sm:max-w-[500px]">
-                        <DialogHeader>
-                          <DialogTitle>Rate This Message</DialogTitle>
+                      <DialogContent from="top" showCloseButton={true} className="w-[95vw] max-w-md sm:max-w-[500px] p-5 sm:p-6 max-h-[90vh] overflow-y-auto rounded-2xl">
+                        <DialogHeader className="pb-2">
+                          <DialogTitle className="text-xl sm:text-2xl text-center">Rate This Message</DialogTitle>
                         </DialogHeader>
-                        <div className="space-y-6 pt-4">
-                          <div>
-                            <label className="text-sm font-medium mb-3 block">How inspiring was this message?</label>
-                            <div className="flex gap-2 justify-center">
+                        <div className="space-y-6 pt-2">
+                          <div className="text-center">
+                            <label className="text-base font-medium mb-4 block text-muted-foreground">How inspiring was this message?</label>
+                            <div className="flex gap-1.5 justify-center touch-none py-2 flex-nowrap w-full overflow-x-hidden">
                               {[1, 2, 3, 4, 5].map((star) => (
                                 <button
                                   key={star}
                                   onClick={() => setRating(star)}
-                                  className="transition-transform hover:scale-110 active:scale-95"
+                                  className="transition-transform hover:scale-110 active:scale-90 p-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full flex-shrink-0"
+                                  type="button"
                                 >
                                   <Star 
                                     className={cn(
-                                      "h-8 w-8 transition-colors",
+                                      "h-8 w-8 sm:h-10 sm:w-10 transition-colors duration-200",
                                       star <= rating 
-                                        ? 'fill-foreground text-foreground' 
-                                        : 'text-muted-foreground'
+                                        ? 'fill-amber-400 text-amber-400' 
+                                        : 'text-muted-foreground/20 hover:text-amber-400/50'
                                     )}
                                   />
                                 </button>
                               ))}
                             </div>
                           </div>
-                          <div>
-                            <label className="text-sm font-medium mb-2 block">Additional Feedback (Optional)</label>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium block">Additional Feedback (Optional)</label>
                             <Textarea
                               placeholder="What did you like or what could be improved?"
                               value={feedbackText}
                               onChange={(e) => setFeedbackText(e.target.value)}
                               rows={4}
-                              className="resize-none"
+                              className="resize-none text-base min-h-[120px] p-3"
                             />
                           </div>
                           <Button 
                             onClick={submitFeedback} 
                             disabled={submitting || rating === 0}
-                            className="w-full"
+                            className="w-full h-12 text-base font-medium shadow-sm mt-2"
                           >
                             {submitting ? (
                               <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
                                 Submitting...
                               </>
                             ) : (

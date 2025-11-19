@@ -69,12 +69,14 @@ export const WeeklyMonthlyReports = React.memo(function WeeklyMonthlyReports({ e
   }
 
   return (
-    <Card>
+    <Card className="border border-border/30 hover:border-border/50 transition-all duration-300">
       <CardHeader className="pb-3 sm:pb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2">
           <div className="flex-1">
             <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-              <Calendar className="h-5 w-5 text-indigo-600 flex-shrink-0" />
+              <div className="hidden sm:flex p-2 rounded-lg bg-gradient-to-br from-indigo-500/10 to-purple-500/5 border border-indigo-500/20">
+                <Calendar className="h-5 w-5 text-indigo-500" />
+              </div>
               Weekly & Monthly Reports
             </CardTitle>
             <CardDescription className="text-xs sm:text-sm mt-1">
@@ -94,7 +96,7 @@ export const WeeklyMonthlyReports = React.memo(function WeeklyMonthlyReports({ e
               };
               exportAnalytics(user, analytics);
             }}
-            className="w-full sm:w-auto"
+            className="w-full sm:w-auto shadow-sm"
           >
             <Download className="h-4 w-4 sm:mr-2" />
             <span className="sm:inline">Export</span>
@@ -113,21 +115,21 @@ export const WeeklyMonthlyReports = React.memo(function WeeklyMonthlyReports({ e
             {weeklyData ? (
               <div className="space-y-3 sm:space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                  <div className="p-3 sm:p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/10 hover:border-blue-500/20 transition-colors">
                     <div className="flex items-center gap-2 mb-2">
                       <Mail className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                      <p className="text-xs sm:text-sm text-muted-foreground">Total Messages</p>
+                      <p className="text-xs sm:text-sm font-medium text-muted-foreground">Total Messages</p>
                     </div>
-                    <p className="text-xl sm:text-2xl font-bold text-blue-600">{weeklyData.total_messages || 0}</p>
+                    <p className="text-2xl font-bold text-foreground">{weeklyData.total_messages || 0}</p>
                     <p className="text-xs text-muted-foreground mt-1">{weeklyData.period || 'Last 4 weeks'}</p>
                   </div>
 
-                  <div className="p-3 sm:p-4 bg-green-50 rounded-lg border border-green-200">
+                  <div className="p-4 rounded-xl bg-green-500/5 border border-green-500/10 hover:border-green-500/20 transition-colors">
                     <div className="flex items-center gap-2 mb-2">
                       <TrendingUp className="h-4 w-4 text-green-600 flex-shrink-0" />
-                      <p className="text-xs sm:text-sm text-muted-foreground">Avg Rating</p>
+                      <p className="text-xs sm:text-sm font-medium text-muted-foreground">Avg Rating</p>
                     </div>
-                    <p className="text-xl sm:text-2xl font-bold text-green-600">
+                    <p className="text-2xl font-bold text-foreground">
                       {weeklyData.avg_rating ? weeklyData.avg_rating.toFixed(1) : 'N/A'}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -135,19 +137,19 @@ export const WeeklyMonthlyReports = React.memo(function WeeklyMonthlyReports({ e
                     </p>
                   </div>
 
-                  <div className="p-3 sm:p-4 bg-purple-50 rounded-lg border border-purple-200">
+                  <div className="p-4 rounded-xl bg-purple-500/5 border border-purple-500/10 hover:border-purple-500/20 transition-colors">
                     <div className="flex items-center gap-2 mb-2">
                       <Target className="h-4 w-4 text-purple-600 flex-shrink-0" />
-                      <p className="text-xs sm:text-sm text-muted-foreground">Current Streak</p>
+                      <p className="text-xs sm:text-sm font-medium text-muted-foreground">Current Streak</p>
                     </div>
-                    <p className="text-xl sm:text-2xl font-bold text-purple-600">
+                    <p className="text-2xl font-bold text-foreground">
                       {weeklyData.streak_count || 0}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">Days in a row</p>
                   </div>
                 </div>
 
-                <div className="p-3 sm:p-4 bg-gray-50 rounded-lg border">
+                <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
                   <h4 className="font-semibold text-sm sm:text-base mb-2">Period Summary</h4>
                   <div className="text-xs sm:text-sm text-muted-foreground space-y-1">
                     <p>Start: {weeklyData.start_date ? new Date(weeklyData.start_date).toLocaleDateString() : 'N/A'}</p>
@@ -164,28 +166,28 @@ export const WeeklyMonthlyReports = React.memo(function WeeklyMonthlyReports({ e
             {monthlyData ? (
               <div className="space-y-3 sm:space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  <div className="p-3 sm:p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/10 hover:border-blue-500/20 transition-colors">
                     <div className="flex items-center gap-2 mb-2">
                       <Mail className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                      <p className="text-xs sm:text-sm text-muted-foreground">Total Messages</p>
+                      <p className="text-xs sm:text-sm font-medium text-muted-foreground">Total Messages</p>
                     </div>
-                    <p className="text-xl sm:text-2xl font-bold text-blue-600">{monthlyData.total_messages || 0}</p>
+                    <p className="text-2xl font-bold text-foreground">{monthlyData.total_messages || 0}</p>
                     <p className="text-xs text-muted-foreground mt-1">{monthlyData.period || 'Last 6 months'}</p>
                   </div>
 
-                  <div className="p-3 sm:p-4 bg-purple-50 rounded-lg border border-purple-200">
+                  <div className="p-4 rounded-xl bg-purple-500/5 border border-purple-500/10 hover:border-purple-500/20 transition-colors">
                     <div className="flex items-center gap-2 mb-2">
                       <Target className="h-4 w-4 text-purple-600 flex-shrink-0" />
-                      <p className="text-xs sm:text-sm text-muted-foreground">Current Streak</p>
+                      <p className="text-xs sm:text-sm font-medium text-muted-foreground">Current Streak</p>
                     </div>
-                    <p className="text-xl sm:text-2xl font-bold text-purple-600">
+                    <p className="text-2xl font-bold text-foreground">
                       {monthlyData.streak_count || 0}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">Days in a row</p>
                   </div>
                 </div>
 
-                <div className="p-3 sm:p-4 bg-gray-50 rounded-lg border">
+                <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
                   <h4 className="font-semibold text-sm sm:text-base mb-2">Period Summary</h4>
                   <div className="text-xs sm:text-sm text-muted-foreground space-y-1">
                     <p>Start: {monthlyData.start_date ? new Date(monthlyData.start_date).toLocaleDateString() : 'N/A'}</p>

@@ -1556,7 +1556,7 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
                     </div>
                     <div>
                       <CardTitle className="text-base sm:text-lg font-semibold">Preview Your Next Message</CardTitle>
-                      <p className="text-xs text-muted-foreground mt-0.5 font-normal">See what your next motivational email will look like</p>
+                      <p className="hidden sm:block text-xs text-muted-foreground mt-0.5 font-normal">See what your next motivational email will look like</p>
                     </div>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
@@ -4669,7 +4669,7 @@ function App() {
       <ErrorBoundary>
         <div className="App">
           <Toaster position="top-center" />
-          <NotificationList />
+          {/* <NotificationList /> - Moved to layouts */}
           <NetworkStatus />
           <AdminDashboard />
         </div>
@@ -4681,7 +4681,7 @@ function App() {
     <ErrorBoundary>
       <div className="App">
         <Toaster position="top-center" />
-        <NotificationList />
+        {/* <NotificationList /> - Moved to layouts for better positioning */}
         <NetworkStatus />
 
         <SignedOut>
