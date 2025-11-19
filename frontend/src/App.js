@@ -42,6 +42,7 @@ const ADMIN_TIMEZONE = "Asia/Kolkata";
 
 // Import dynamic API configuration
 import API_CONFIG from './config/api';
+import { ROUTES, getCurrentRoute, updatePageMetadata } from './config/routes';
 const BACKEND_URL = API_CONFIG.BACKEND_URL;
 const API = API_CONFIG.API_BASE;
 
@@ -85,8 +86,15 @@ const TONE_OPTIONS = [
 ];
 
 function AuthScreen() {
+  const currentRoute = getCurrentRoute();
   const pathname = window.location.pathname;
-  const isSignUp = pathname.startsWith("/sign-up");
+  const isSignUp = pathname.startsWith(ROUTES.SIGN_UP.path);
+  
+  // Update page metadata
+  useEffect(() => {
+    const route = isSignUp ? ROUTES.SIGN_UP : ROUTES.SIGN_IN;
+    updatePageMetadata(route);
+  }, [isSignUp]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 p-4">
@@ -110,7 +118,7 @@ function AuthScreen() {
           {isSignUp ? (
             <SignUp
               routing="path"
-              path="/sign-up"
+              path={ROUTES.SIGN_UP.path}
               appearance={{
                 elements: {
                   rootBox: "w-full",
@@ -129,7 +137,7 @@ function AuthScreen() {
           ) : (
             <SignIn
               routing="path"
-              path="/sign-in"
+              path={ROUTES.SIGN_IN.path}
               appearance={{
                 elements: {
                   rootBox: "w-full",
@@ -154,6 +162,11 @@ function AuthScreen() {
 }
 
 function OnboardingScreen({ email, onComplete }) {
+  // Update page metadata
+  useEffect(() => {
+    updatePageMetadata(ROUTES.ONBOARDING);
+  }, []);
+  
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     name: "",
@@ -664,6 +677,10 @@ function OnboardingScreen({ email, onComplete }) {
 }
 
 function DashboardScreen({ user, onLogout, onUserUpdate }) {
+  // Update page metadata
+  useEffect(() => {
+    updatePageMetadata(ROUTES.DASHBOARD);
+  }, []);
   const { user: clerkUser, isLoaded: clerkLoaded } = useUser();
   const [editMode, setEditMode] = useState(false);
   const [editAccountMode, setEditAccountMode] = useState(false);
@@ -1834,6 +1851,11 @@ function AchievementFormCard({ achievement, onSave, onCancel, getAchievementIcon
 }
 
 function AdminDashboard() {
+  // Update page metadata
+  useEffect(() => {
+    updatePageMetadata(ROUTES.ADMIN);
+  }, []);
+  
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -4010,7 +4032,14 @@ function AdminDashboard() {
 }
 
 function SignedInRouter() {
-  if (window.location.pathname === "/admin") {
+  const currentRoute = getCurrentRoute();
+  
+  // Update page metadata based on current route
+  useEffect(() => {
+    updatePageMetadata(currentRoute);
+  }, [currentRoute]);
+  
+  if (window.location.pathname === ROUTES.ADMIN.path) {
     return <AdminDashboard />;
   }
   return <UserApp />;
@@ -4177,7 +4206,7 @@ function ErrorState({ onRetry }) {
 
 function App() {
   // Check if user is accessing admin route - bypass Clerk auth for admin
-  if (window.location.pathname === "/admin") {
+  if (window.location.pathname === ROUTES.ADMIN.path) {
     return (
       <ErrorBoundary>
         <div className="App">
