@@ -113,7 +113,7 @@ export const AnalyticsDashboard = React.memo(function AnalyticsDashboard({ email
               <div className="absolute top-2 right-2 h-3 w-3 rounded-full bg-orange-500 animate-pulse shadow-lg shadow-orange-500/50 z-10" />
               <div className="absolute top-2 right-2 h-3 w-3 rounded-full bg-orange-500/30 animate-ping z-10" />
             </div>
-            <p className="text-base font-medium text-orange-600/70 dark:text-orange-400/70 mb-1">days</p>
+            <p className="text-base font-medium text-orange-600/70 dark:text-orange-400/70 mb-0">days</p>
           </div>
           
           {/* Milestone Progress */}

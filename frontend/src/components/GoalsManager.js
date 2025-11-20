@@ -11,11 +11,10 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/animate-ui/components/radix/dialog";
 import { Badge } from "@/components/ui/badge";
 import { TabGroup, TabList, Tab, TabPanels, TabPanel } from "@/components/animate-ui/components/headless/tabs";
-import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   Plus, Edit, Trash2, Clock, Calendar, X, History, 
-  Target, Zap, Mail, Settings, Play, Pause, Sparkles, Timer, Info, Loader2
+  Target, Zap, Mail, Settings, Play, Pause, Sparkles, Loader2
 } from "lucide-react";
 import { toast } from "sonner";
 import { showNotification } from "@/components/animate-ui/components/community/notification-list";
@@ -82,8 +81,6 @@ export function GoalsManager({ user, onUpdate }) {
     tone: "",
     custom_text: "",
     schedules: getDefaultSchedule(),
-    send_limit_per_day: null,
-    send_time_windows: [],
     active: true
   });
 
@@ -269,12 +266,6 @@ export function GoalsManager({ user, onUpdate }) {
         time: s.time || s.times?.[0] || "09:00"
       }));
       
-      // For main goal, get send_time_windows from user.schedule
-      let send_time_windows = goal.send_time_windows || [];
-      if ((goal.isMainGoal || goal.id === 'main_goal') && user.schedule?.send_time_windows) {
-        send_time_windows = user.schedule.send_time_windows;
-      }
-      
       setFormData({
         title: goal.title || "",
         description: description,
@@ -283,8 +274,6 @@ export function GoalsManager({ user, onUpdate }) {
         tone: goal.tone || "",
         custom_text: goal.custom_text || "",
         schedules: schedules,
-        send_limit_per_day: goal.send_limit_per_day || null,
-        send_time_windows: send_time_windows,
         active: goal.active !== false
       });
     } else {
@@ -303,8 +292,6 @@ export function GoalsManager({ user, onUpdate }) {
         tone: "",
         custom_text: "",
         schedules: getDefaultSchedule(),
-        send_limit_per_day: null,
-        send_time_windows: [],
         active: true
       });
     }
@@ -344,33 +331,6 @@ export function GoalsManager({ user, onUpdate }) {
     });
   };
 
-  const handleAddTimeWindow = () => {
-    if (formData.send_time_windows.length >= 5) {
-      showNotification({ type: 'error', message: "Maximum 5 time windows allowed", title: "Validation Error" });
-      toast.error("Maximum 5 time windows allowed");
-      return;
-    }
-    setFormData({
-      ...formData,
-      send_time_windows: [
-        ...formData.send_time_windows,
-        { start_time: "09:00", end_time: "17:00", timezone: user.schedule?.timezone || "UTC", max_sends: 1 }
-      ]
-    });
-  };
-
-  const handleRemoveTimeWindow = (index) => {
-    setFormData({
-      ...formData,
-      send_time_windows: formData.send_time_windows.filter((_, i) => i !== index)
-    });
-  };
-
-  const handleUpdateTimeWindow = (index, field, value) => {
-    const newWindows = [...formData.send_time_windows];
-    newWindows[index] = { ...newWindows[index], [field]: value };
-    setFormData({ ...formData, send_time_windows: newWindows });
-  };
 
   const handleUpdateSchedule = (index, field, value) => {
     const newSchedules = [...formData.schedules];
@@ -443,13 +403,6 @@ export function GoalsManager({ user, onUpdate }) {
           active: s.active !== false,
           end_date: s.end_date || null
         })),
-        send_limit_per_day: formData.send_limit_per_day || null,
-        send_time_windows: formData.send_time_windows.length > 0 ? formData.send_time_windows.map(w => ({
-          start_time: w.start_time,
-          end_time: w.end_time,
-          timezone: w.timezone,
-          max_sends: w.max_sends || 1
-        })) : null,
         active: formData.active
       };
 
@@ -484,17 +437,6 @@ export function GoalsManager({ user, onUpdate }) {
               if (user.schedule.custom_days) scheduleUpdate.custom_days = user.schedule.custom_days;
               if (user.schedule.custom_interval) scheduleUpdate.custom_interval = user.schedule.custom_interval;
               if (user.schedule.monthly_dates) scheduleUpdate.monthly_dates = user.schedule.monthly_dates;
-              if (user.schedule.send_time_windows) scheduleUpdate.send_time_windows = user.schedule.send_time_windows;
-            }
-            
-            // Add send_time_windows if provided
-            if (formData.send_time_windows && formData.send_time_windows.length > 0) {
-              scheduleUpdate.send_time_windows = formData.send_time_windows.map(w => ({
-                start_time: w.start_time,
-                end_time: w.end_time,
-                timezone: w.timezone || scheduleUpdate.timezone,
-                max_sends: w.max_sends || 1
-              }));
             }
             
             userUpdatePayload.schedule = scheduleUpdate;
@@ -779,12 +721,12 @@ export function GoalsManager({ user, onUpdate }) {
       <CardHeader className="pb-3 sm:pb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2">
           <div className="flex-1">
-            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-              <Target className="h-5 w-5 flex-shrink-0 text-primary" />
+            <CardTitle className="flex items-center gap-0 sm:gap-2 text-lg sm:text-xl">
+              <Target className="hidden sm:block h-5 w-5 flex-shrink-0 text-primary" />
               Goals & Motivational Emails
             </CardTitle>
             <p className="hidden sm:block text-sm text-muted-foreground mt-1">
-              Create multiple goals with custom schedules, personalities, and time-based send limits
+              Create multiple goals with custom schedules and personalities
             </p>
           </div>
           <Dialog open={showModal} onOpenChange={setShowModal}>
@@ -796,10 +738,10 @@ export function GoalsManager({ user, onUpdate }) {
             </DialogTrigger>
             <DialogContent from="top" showCloseButton={true} className="w-full h-[100dvh] sm:h-[85vh] sm:max-w-4xl p-0 bg-background border-border shadow-xl flex flex-col gap-0 sm:rounded-xl overflow-hidden">
               {/* Sticky Header */}
-              <div className="flex-shrink-0 sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-4 sm:px-6 sm:py-5 border-b border-border/40 flex items-center justify-between">
+              <div className="flex-shrink-0 sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-3 py-3 sm:px-6 sm:py-5 border-b border-border/40 flex items-center justify-between">
                 <DialogHeader className="p-0 space-y-0 text-left w-full">
-                  <DialogTitle className="text-lg sm:text-2xl font-bold tracking-tight flex items-center gap-2">
-                    {editingGoal ? <Edit className="h-5 w-5 text-primary" /> : <Plus className="h-5 w-5 text-primary" />}
+                  <DialogTitle className="text-base sm:text-2xl font-bold tracking-tight flex items-center gap-1.5 sm:gap-2">
+                    {editingGoal ? <Edit className="h-3.5 w-3.5 sm:h-5 sm:w-5 text-primary" /> : <Plus className="h-3.5 w-3.5 sm:h-5 sm:w-5 text-primary" />}
                     {editingGoal ? "Edit Goal" : "New Goal"}
                   </DialogTitle>
                 </DialogHeader>
@@ -811,42 +753,34 @@ export function GoalsManager({ user, onUpdate }) {
                   
                   {/* Navigation Sidebar */}
                   <div className="shrink-0 z-20 bg-background sm:bg-muted/10 border-b sm:border-b-0 sm:border-r border-border/40 sm:w-64 h-auto sm:h-full">
-                    <TabList className="flex sm:flex-col w-full h-full p-2 sm:p-4 gap-1 sm:gap-2 overflow-x-auto sm:overflow-y-auto scrollbar-hide bg-transparent items-stretch sm:justify-start">
+                    <TabList className="flex sm:flex-col w-full h-full p-1.5 sm:p-4 gap-1 sm:gap-2 overflow-x-auto sm:overflow-y-auto scrollbar-hide bg-transparent items-stretch sm:justify-start">
                       <Tab value="basic" className={cn(
-                        "flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 whitespace-nowrap ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                        "flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2.5 sm:py-2 text-xs sm:text-sm font-medium rounded-md transition-all duration-200 whitespace-nowrap ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 touch-manipulation min-h-[44px] sm:min-h-0",
                         activeTab === "basic" 
                           ? "bg-secondary text-secondary-foreground sm:bg-background sm:text-foreground sm:shadow-sm" 
                           : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                       )}>
-                        <Target className="h-4 w-4" />
-                        <span>Basic Details</span>
+                        <Target className="h-3 w-3 sm:h-4 sm:w-4" />
+                        <span className="hidden xs:inline">Basic Details</span>
+                        <span className="xs:hidden">Basic</span>
                       </Tab>
                       <Tab value="content" className={cn(
-                        "flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 whitespace-nowrap ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                        "flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2.5 sm:py-2 text-xs sm:text-sm font-medium rounded-md transition-all duration-200 whitespace-nowrap ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 touch-manipulation min-h-[44px] sm:min-h-0",
                         activeTab === "content" 
                           ? "bg-secondary text-secondary-foreground sm:bg-background sm:text-foreground sm:shadow-sm" 
                           : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                       )}>
-                        <Sparkles className="h-4 w-4" />
+                        <Sparkles className="h-3 w-3 sm:h-4 sm:w-4" />
                         <span>Content</span>
                       </Tab>
                       <Tab value="schedules" className={cn(
-                        "flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 whitespace-nowrap ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                        "flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2.5 sm:py-2 text-xs sm:text-sm font-medium rounded-md transition-all duration-200 whitespace-nowrap ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 touch-manipulation min-h-[44px] sm:min-h-0",
                         activeTab === "schedules" 
                           ? "bg-secondary text-secondary-foreground sm:bg-background sm:text-foreground sm:shadow-sm" 
                           : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                       )}>
-                        <Calendar className="h-4 w-4" />
+                        <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
                         <span>Schedules</span>
-                      </Tab>
-                      <Tab value="limits" className={cn(
-                        "flex-1 sm:flex-none flex items-center justify-center sm:justify-start gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 whitespace-nowrap ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                        activeTab === "limits" 
-                          ? "bg-secondary text-secondary-foreground sm:bg-background sm:text-foreground sm:shadow-sm" 
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                      )}>
-                        <Timer className="h-4 w-4" />
-                        <span>Limits</span>
                       </Tab>
                     </TabList>
                   </div>
@@ -854,34 +788,34 @@ export function GoalsManager({ user, onUpdate }) {
                   {/* Content Panel */}
                   <div className="flex-1 h-full overflow-y-auto bg-background/50 scroll-smooth">
 
-                  <TabPanels className="w-full max-w-3xl mx-auto p-4 sm:p-8 pb-32 sm:pb-12">
-                    <TabPanel value="basic" className="space-y-6 focus:outline-none w-full">
-                  <div className="space-y-2">
-                    <Label className="text-base sm:text-lg font-semibold">Goal Title *</Label>
+                  <TabPanels className="w-full max-w-3xl mx-auto p-3 sm:p-8 pb-24 sm:pb-12">
+                    <TabPanel value="basic" className="space-y-4 sm:space-y-6 focus:outline-none w-full">
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <Label className="text-sm sm:text-lg font-semibold">Goal Title *</Label>
                     <Input
                       value={formData.title}
                       onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                       placeholder="e.g., Finish MVP, Learn Spanish"
                       className="mt-1 text-base"
                     />
-                    <p className="text-xs sm:text-sm text-muted-foreground">Give your goal a clear, motivating name</p>
+                    <p className="text-xs text-muted-foreground">Give your goal a clear, motivating name</p>
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-base sm:text-lg font-semibold">Description <span className="text-destructive">*</span></Label>
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <Label className="text-sm sm:text-lg font-semibold">Description <span className="text-destructive">*</span></Label>
                     <Textarea
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                       placeholder="Additional context for personalized messages..."
                       className="mt-1 text-base"
-                      rows={5}
+                      rows={4}
                       required
                     />
-                    <p className="text-xs sm:text-sm text-muted-foreground">Add details to help personalize your motivational messages</p>
+                    <p className="text-xs text-muted-foreground">Add details to help personalize your motivational messages</p>
                   </div>
-                  <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                  <div className="flex items-center justify-between p-3 sm:p-4 border rounded-lg bg-muted/30">
                     <div className="flex-1">
-                      <Label className="text-base sm:text-lg font-semibold cursor-pointer">Active</Label>
-                      <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">Enable or disable this goal</p>
+                      <Label className="text-sm sm:text-lg font-semibold cursor-pointer">Active</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">Enable or disable this goal</p>
                     </div>
                     <Switch
                       checked={formData.active}
@@ -891,10 +825,10 @@ export function GoalsManager({ user, onUpdate }) {
                   </div>
                   </TabPanel>
 
-                  <TabPanel value="content" className="space-y-6 focus:outline-none w-full">
-                  <div className="space-y-3">
-                    <Label className="text-base sm:text-lg font-semibold">How should we write your emails?</Label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <TabPanel value="content" className="space-y-4 sm:space-y-6 focus:outline-none w-full">
+                  <div className="space-y-2 sm:space-y-3">
+                    <Label className="text-sm sm:text-lg font-semibold">How should we write your emails?</Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
                       {[
                         { id: "personality", icon: Sparkles, title: "Personality", desc: "Use a famous persona" },
                         { id: "tone", icon: Zap, title: "Tone", desc: "Set a specific mood" },
@@ -907,17 +841,17 @@ export function GoalsManager({ user, onUpdate }) {
                             key={option.id}
                             onClick={() => setFormData({ ...formData, mode: option.id, personality_id: "", tone: "", custom_text: "" })}
                             className={cn(
-                              "cursor-pointer relative flex flex-col items-center text-center p-4 rounded-xl border-2 transition-all duration-200 hover:bg-accent/5",
+                              "cursor-pointer relative flex flex-col items-center text-center p-3 sm:p-4 rounded-xl border-2 transition-all duration-200 hover:bg-accent/5 touch-manipulation min-h-[100px] sm:min-h-0",
                               isSelected 
                                 ? "border-primary bg-primary/5 shadow-sm" 
                                 : "border-border/50 hover:border-primary/30"
                             )}
                           >
                             <div className={cn(
-                              "p-2 rounded-full mb-2 transition-colors",
+                              "p-1.5 sm:p-2 rounded-full mb-1.5 sm:mb-2 transition-colors",
                               isSelected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
                             )}>
-                              <Icon className="h-5 w-5" />
+                              <Icon className="h-3.5 w-3.5 sm:h-5 sm:w-5" />
                             </div>
                             <h3 className="font-semibold text-sm mb-0.5">{option.title}</h3>
                             <p className="text-xs text-muted-foreground">{option.desc}</p>
@@ -928,8 +862,8 @@ export function GoalsManager({ user, onUpdate }) {
                   </div>
 
                   {formData.mode === "personality" && (
-                    <div className="space-y-2 animate-in fade-in zoom-in-95 duration-300">
-                      <Label className="text-base sm:text-lg font-semibold">Select Personality *</Label>
+                    <div className="space-y-1.5 sm:space-y-2 animate-in fade-in zoom-in-95 duration-300">
+                      <Label className="text-sm sm:text-lg font-semibold">Select Personality *</Label>
                       {famousPersonalities.length === 0 ? (
                         <div className="mt-1 p-4 bg-muted border border-border rounded-lg">
                           <p className="text-sm sm:text-base text-foreground">
@@ -945,7 +879,7 @@ export function GoalsManager({ user, onUpdate }) {
                             }}
                             className="mt-1"
                           >
-                            <SelectTrigger className="text-base h-12">
+                            <SelectTrigger className="text-base h-11 sm:h-12">
                               <SelectValue placeholder="Choose a personality">
                                 {(() => {
                                   // Display the personality name, not the ID
@@ -993,8 +927,8 @@ export function GoalsManager({ user, onUpdate }) {
                   )}
 
                   {formData.mode === "tone" && (
-                    <div className="space-y-2 animate-in fade-in zoom-in-95 duration-300">
-                      <Label className="text-base sm:text-lg font-semibold">Select Tone *</Label>
+                    <div className="space-y-1.5 sm:space-y-2 animate-in fade-in zoom-in-95 duration-300">
+                      <Label className="text-sm sm:text-lg font-semibold">Select Tone *</Label>
                       {tones.length === 0 ? (
                         <div className="mt-1 p-4 bg-muted border border-border rounded-lg">
                           <p className="text-sm sm:text-base text-foreground">
@@ -1008,7 +942,7 @@ export function GoalsManager({ user, onUpdate }) {
                             onValueChange={(value) => setFormData({ ...formData, tone: value })}
                             className="mt-1"
                           >
-                            <SelectTrigger className="text-base h-12">
+                            <SelectTrigger className="text-base h-11 sm:h-12">
                               <SelectValue placeholder="Choose a tone">
                                 {formData.tone || "Choose a tone"}
                               </SelectValue>
@@ -1032,41 +966,41 @@ export function GoalsManager({ user, onUpdate }) {
                   )}
 
                   {formData.mode === "custom" && (
-                    <div className="space-y-2 animate-in fade-in zoom-in-95 duration-300">
-                      <Label className="text-base sm:text-lg font-semibold">Custom Style Guide *</Label>
+                    <div className="space-y-1.5 sm:space-y-2 animate-in fade-in zoom-in-95 duration-300">
+                      <Label className="text-sm sm:text-lg font-semibold">Custom Style Guide *</Label>
                       <Textarea
                         value={formData.custom_text}
                         onChange={(e) => setFormData({ ...formData, custom_text: e.target.value })}
                         placeholder="Describe the writing style you want (e.g., 'Write like a friendly mentor, use short sentences, be encouraging but realistic')..."
-                        className="mt-1 text-base min-h-[150px]"
-                        rows={6}
+                        className="mt-1 text-base min-h-[120px] sm:min-h-[150px]"
+                        rows={5}
                       />
-                      <p className="text-xs sm:text-sm text-muted-foreground">Describe how you want your messages to be written</p>
+                      <p className="text-xs text-muted-foreground">Describe how you want your messages to be written</p>
                     </div>
                   )}
                   </TabPanel>
 
-                  <TabPanel value="schedules" className="space-y-6 focus:outline-none w-full">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 pb-3 border-b">
+                  <TabPanel value="schedules" className="space-y-4 sm:space-y-6 focus:outline-none w-full">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 sm:gap-0 pb-2.5 sm:pb-3 border-b">
                     <div>
-                      <Label className="text-base sm:text-lg font-semibold">Delivery Schedule</Label>
-                      <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">When should we send you emails?</p>
+                      <Label className="text-sm sm:text-lg font-semibold">Delivery Schedule</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">When should we send you emails?</p>
                     </div>
-                    <Button type="button" variant="outline" size="sm" onClick={handleAddSchedule} className="w-full sm:w-auto min-w-[140px] h-9">
-                      <Plus className="mr-1.5 h-4 w-4" />
+                    <Button type="button" variant="outline" size="sm" onClick={handleAddSchedule} className="w-full sm:w-auto min-w-[140px] h-11 sm:h-9 touch-manipulation">
+                      <Plus className="mr-1 sm:mr-1.5 h-3.5 w-3.5 sm:h-4 sm:w-4" />
                       <span>Add Time</span>
                     </Button>
                   </div>
                   
-                  <div className="space-y-4">
+                  <div className="space-y-3 sm:space-y-4">
                     {formData.schedules.map((schedule, index) => (
-                      <div key={index} className="p-4 sm:p-5 rounded-xl border border-border/40 bg-accent/10 hover:bg-accent/20 transition-colors">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mb-4">
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-background border border-border shadow-sm text-sm font-semibold text-muted-foreground">
+                      <div key={index} className="p-3 sm:p-5 rounded-xl border border-border/40 bg-accent/10 hover:bg-accent/20 transition-colors space-y-3 sm:space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 sm:gap-0 mb-3 sm:mb-4">
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            <div className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-background border border-border shadow-sm text-xs sm:text-sm font-semibold text-muted-foreground">
                               {index + 1}
                             </div>
-                            <span className="font-medium text-base">Schedule Config</span>
+                            <span className="font-medium text-sm sm:text-base">Schedule Config</span>
                           </div>
                           <div className="flex items-center gap-3 flex-shrink-0 self-end sm:self-auto">
                             <div className="flex items-center gap-2 bg-background/50 px-3 py-1.5 rounded-full border border-border/30">
@@ -1084,15 +1018,15 @@ export function GoalsManager({ user, onUpdate }) {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => handleRemoveSchedule(index)}
-                                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full"
+                                className="h-11 w-11 sm:h-8 sm:w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full touch-manipulation"
                               >
-                                <X className="h-4 w-4" />
+                                <X className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                               </Button>
                             )}
                           </div>
                         </div>
                         
-                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-4">
                           <div className="sm:col-span-4">
                             <Label className="text-xs text-muted-foreground mb-1.5 block">Frequency</Label>
                             <Select
@@ -1219,148 +1153,25 @@ export function GoalsManager({ user, onUpdate }) {
                     ))}
                   </div>
                   </TabPanel>
-
-                  <TabPanel value="limits" className="space-y-6 focus:outline-none w-full">
-                  <Alert className="bg-blue-50 border-blue-200">
-                    <Info className="h-5 w-5 text-blue-600" />
-                    <AlertDescription className="text-sm sm:text-base text-blue-900">
-                      Configure when and how many emails can be sent. Time windows take priority over daily limits.
-                    </AlertDescription>
-                  </Alert>
-
-                  <div className="space-y-2">
-                    <Label className="text-base sm:text-lg font-semibold">Max Sends Per Day (Fallback)</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      max="50"
-                      value={formData.send_limit_per_day || ""}
-                      onChange={(e) => setFormData({ ...formData, send_limit_per_day: e.target.value ? parseInt(e.target.value) : null })}
-                      placeholder="Leave empty for no limit"
-                      className="mt-1 text-base"
-                    />
-                    <p className="text-xs sm:text-sm text-muted-foreground">Maximum emails per day if time windows are not configured</p>
-                  </div>
-
-                  <Separator />
-
-                  <div className="space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 pb-3 border-b">
-                      <div>
-                        <Label className="text-base sm:text-lg font-semibold">Send Time Windows (Max 5)</Label>
-                        <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">Restrict sending to specific time periods</p>
-                      </div>
-                      <Button 
-                        type="button" 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={handleAddTimeWindow}
-                        disabled={formData.send_time_windows.length >= 5}
-                        className="w-full sm:w-auto min-w-[160px]"
-                      >
-                        <Plus />
-                        <span>Add Time Window</span>
-                      </Button>
-                    </div>
-                    
-                    <div className="space-y-4">
-                      {formData.send_time_windows.map((window, index) => (
-                        <Card key={index} className="p-4 sm:p-5 border-2 border-primary/20 w-full">
-                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-0 mb-4 pb-3 border-b">
-                            <div className="flex items-center gap-2">
-                              <Timer className="h-5 w-5 text-primary flex-shrink-0" />
-                              <span className="font-semibold text-base sm:text-lg">Window {index + 1}</span>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleRemoveTimeWindow(index)}
-                              className="h-9 w-9 sm:h-8 sm:w-8 text-destructive hover:text-destructive"
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
-                              <Label className="text-xs sm:text-sm">Start Time</Label>
-                              <Input
-                                type="time"
-                                value={window.start_time}
-                                onChange={(e) => handleUpdateTimeWindow(index, "start_time", e.target.value)}
-                                className="h-9"
-                              />
-                            </div>
-                            <div>
-                              <Label className="text-xs sm:text-sm">End Time</Label>
-                              <Input
-                                type="time"
-                                value={window.end_time}
-                                onChange={(e) => handleUpdateTimeWindow(index, "end_time", e.target.value)}
-                                className="h-9"
-                              />
-                            </div>
-                            <div>
-                              <Label className="text-xs sm:text-sm">Timezone</Label>
-                              <Select
-                                value={window.timezone}
-                                onValueChange={(value) => handleUpdateTimeWindow(index, "timezone", value)}
-                              >
-                                <SelectTrigger className="h-9">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent className="max-h-[200px]">
-                                  {TIMEZONES.map((tz) => (
-                                    <SelectItem key={tz.value} value={tz.value}>
-                                      {tz.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div>
-                              <Label className="text-xs sm:text-sm">Max Sends in Window</Label>
-                              <Input
-                                type="number"
-                                min="1"
-                                max="50"
-                                value={window.max_sends || 1}
-                                onChange={(e) => handleUpdateTimeWindow(index, "max_sends", parseInt(e.target.value) || 1)}
-                                className="h-9"
-                              />
-                            </div>
-                          </div>
-                        </Card>
-                      ))}
-                      
-                      {formData.send_time_windows.length === 0 && (
-                        <p className="text-sm text-muted-foreground text-center py-4">
-                          No time windows configured. Emails will be sent at scheduled times without time restrictions.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  </TabPanel>
                 </TabPanels>
                 </div>
               </TabGroup>
 
               </div>
               {/* Sticky Footer for Mobile */}
-              <div className="flex-shrink-0 sticky bottom-0 z-20 bg-background border-t border-border/40 p-4 sm:p-0 sm:bg-transparent sm:border-0 sm:relative sm:mt-8 sm:pt-4 sm:border-t-0 w-full">
-                <DialogFooter className="flex-col sm:flex-row gap-3 sm:gap-2 w-full">
+              <div className="flex-shrink-0 sticky bottom-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-t border-border/40 p-3 sm:p-0 sm:bg-transparent sm:border-0 sm:relative sm:mt-8 sm:pt-4 sm:border-t-0 w-full">
+                <DialogFooter className="flex-col sm:flex-row gap-2.5 sm:gap-2 w-full">
                   <Button 
                     variant="outline" 
                     onClick={handleCloseModal} 
-                    className="w-full sm:w-auto order-2 sm:order-1 h-12 sm:h-10 text-base"
+                    className="w-full sm:w-auto order-2 sm:order-1 h-11 sm:h-10 text-base touch-manipulation"
                   >
                     Cancel
                   </Button>
                   <Button 
                     onClick={handleSubmit} 
                     disabled={loading} 
-                    className="w-full sm:w-auto order-1 sm:order-2 h-12 sm:h-10 text-base font-semibold shadow-md"
+                    className="w-full sm:w-auto order-1 sm:order-2 h-11 sm:h-10 text-base font-semibold shadow-md touch-manipulation"
                   >
                     {loading ? (
                       <>
@@ -1380,9 +1191,9 @@ export function GoalsManager({ user, onUpdate }) {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
           <Card className="border border-border/30 hover:border-border/50 hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm group">
             <CardContent className="p-4 sm:p-5 flex items-center justify-between sm:block">
-              <div className="flex items-center gap-2.5 sm:mb-4">
-                <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 group-hover:bg-blue-500/15 transition-colors">
-                  <Target className="h-4 w-4 text-blue-500" />
+              <div className="flex items-center gap-2 sm:gap-2.5 sm:mb-4">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 group-hover:bg-blue-500/15 transition-colors">
+                  <Target className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-500" />
                 </div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Goals</p>
               </div>
@@ -1391,9 +1202,9 @@ export function GoalsManager({ user, onUpdate }) {
           </Card>
           <Card className="border border-border/30 hover:border-border/50 hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm group">
             <CardContent className="p-4 sm:p-5 flex items-center justify-between sm:block">
-              <div className="flex items-center gap-2.5 sm:mb-4">
-                <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/20 group-hover:bg-green-500/15 transition-colors">
-                  <Play className="h-4 w-4 text-green-500" />
+              <div className="flex items-center gap-2 sm:gap-2.5 sm:mb-4">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-green-500/10 border border-green-500/20 group-hover:bg-green-500/15 transition-colors">
+                  <Play className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500" />
                 </div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active</p>
               </div>
@@ -1402,9 +1213,9 @@ export function GoalsManager({ user, onUpdate }) {
           </Card>
           <Card className="border border-border/30 hover:border-border/50 hover:shadow-md transition-all duration-300 bg-card/50 backdrop-blur-sm group">
             <CardContent className="p-4 sm:p-5 flex items-center justify-between sm:block">
-              <div className="flex items-center gap-2.5 sm:mb-4">
-                <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20 group-hover:bg-purple-500/15 transition-colors">
-                  <Clock className="h-4 w-4 text-purple-500" />
+              <div className="flex items-center gap-2 sm:gap-2.5 sm:mb-4">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-purple-500/10 border border-purple-500/20 group-hover:bg-purple-500/15 transition-colors">
+                  <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-500" />
                 </div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Upcoming</p>
               </div>
@@ -1480,10 +1291,10 @@ export function GoalsManager({ user, onUpdate }) {
                         )}
                         {/* Metadata Row */}
                         <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground">
-                          <Badge variant="outline" className="gap-1 text-xs min-w-0 max-w-full">
-                            {goal.mode === "personality" && <Sparkles className="h-3 w-3 flex-shrink-0" />}
-                            {goal.mode === "tone" && <Zap className="h-3 w-3 flex-shrink-0" />}
-                            {goal.mode === "custom" && <Settings className="h-3 w-3 flex-shrink-0" />}
+                          <Badge variant="outline" className="gap-1 sm:gap-1.5 text-xs min-w-0 max-w-full">
+                            {goal.mode === "personality" && <Sparkles className="h-2.5 w-2.5 sm:h-3 sm:w-3 flex-shrink-0" />}
+                            {goal.mode === "tone" && <Zap className="h-2.5 w-2.5 sm:h-3 sm:w-3 flex-shrink-0" />}
+                            {goal.mode === "custom" && <Settings className="h-2.5 w-2.5 sm:h-3 sm:w-3 flex-shrink-0" />}
                             <span className="hidden sm:inline">{getModeLabel(goal.mode)}: </span>
                             <span className="truncate max-w-[120px] sm:max-w-[180px] md:max-w-none inline-block">{getModeValue(goal) || "N/A"}</span>
                           </Badge>
@@ -1491,12 +1302,6 @@ export function GoalsManager({ user, onUpdate }) {
                             <Calendar className="h-3.5 w-3.5 flex-shrink-0" />
                             <span className="whitespace-nowrap">{(goal.schedules || []).filter(s => s.active).length} active schedule{(goal.schedules || []).filter(s => s.active).length !== 1 ? 's' : ''}</span>
                           </div>
-                          {goal.send_time_windows && goal.send_time_windows.length > 0 && (
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              <Timer className="h-3.5 w-3.5 flex-shrink-0" />
-                              <span className="whitespace-nowrap">{goal.send_time_windows.length} time window{goal.send_time_windows.length !== 1 ? 's' : ''}</span>
-                            </div>
-                          )}
                           {goal.next_sends && goal.next_sends.length > 0 && (
                             <div className="flex items-center gap-1 min-w-0 w-full sm:w-auto sm:flex-initial">
                               <Clock className="h-3.5 w-3.5 flex-shrink-0" />
@@ -1526,7 +1331,7 @@ export function GoalsManager({ user, onUpdate }) {
                           className="flex-1 sm:flex-none h-10 sm:h-8 px-3 sm:px-2.5 text-muted-foreground hover:text-foreground"
                           title="History"
                         >
-                          <History className="h-4 w-4 mr-2 sm:mr-0" />
+                          <History className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-0" />
                           <span className="sm:hidden text-xs font-medium">History</span>
                         </Button>
                         <Button
@@ -1537,7 +1342,7 @@ export function GoalsManager({ user, onUpdate }) {
                           className="flex-1 sm:flex-none h-10 sm:h-8 px-3 sm:px-2.5 text-muted-foreground hover:text-foreground"
                           title={isActive ? "Pause" : "Activate"}
                         >
-                          {isActive ? <Pause className="h-4 w-4 mr-2 sm:mr-0" /> : <Play className="h-4 w-4 mr-2 sm:mr-0" />}
+                          {isActive ? <Pause className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-0" /> : <Play className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-0" />}
                           <span className="sm:hidden text-xs font-medium">{isActive ? "Pause" : "Start"}</span>
                         </Button>
                         <Button
@@ -1547,7 +1352,7 @@ export function GoalsManager({ user, onUpdate }) {
                           className="flex-1 sm:flex-none h-10 sm:h-8 px-3 sm:px-2.5 text-muted-foreground hover:text-foreground"
                           title="Edit"
                         >
-                          <Edit className="h-4 w-4 mr-2 sm:mr-0" />
+                          <Edit className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-0" />
                           <span className="sm:hidden text-xs font-medium">Edit</span>
                         </Button>
                         <Button
@@ -1558,7 +1363,7 @@ export function GoalsManager({ user, onUpdate }) {
                           className="flex-1 sm:flex-none h-10 sm:h-8 px-3 sm:px-2.5 text-destructive hover:text-destructive hover:bg-destructive/10"
                           title="Delete"
                         >
-                          <Trash2 className="h-4 w-4 mr-2 sm:mr-0" />
+                          <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-0" />
                           <span className="sm:hidden text-xs font-medium">Delete</span>
                         </Button>
                       </div>
@@ -1627,7 +1432,7 @@ export function GoalsManager({ user, onUpdate }) {
                           </p>
                         ) : (
                           <p className="text-sm text-muted-foreground italic flex items-center gap-2">
-                            <Sparkles className="h-3 w-3" />
+                            <Sparkles className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                             {msg.status === 'pending' ? 'Content will be generated on schedule' : 
                              msg.status === 'skipped' ? 'Message was skipped' : 
                              msg.status === 'failed' ? 'Generation failed' : 'No content available'}
@@ -1637,7 +1442,7 @@ export function GoalsManager({ user, onUpdate }) {
                       
                       {msg.error_message && (
                         <Alert variant="destructive" className="py-2">
-                          <X className="h-4 w-4" />
+                          <X className="h-3 w-3 sm:h-4 sm:w-4" />
                           <AlertDescription className="text-xs">
                             {msg.error_message}
                           </AlertDescription>
@@ -1646,7 +1451,7 @@ export function GoalsManager({ user, onUpdate }) {
                       
                       {msg.sent_at && (
                         <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                          <Mail className="h-3 w-3" />
+                          <Mail className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                           <span>
                             Sent: {formatDateTimeForTimezone(msg.sent_at, selectedGoalHistory?.schedules?.[0]?.timezone || "UTC", { includeDate: true, includeTime: true })}
                           </span>

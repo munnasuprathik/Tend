@@ -57,8 +57,8 @@ export const StreakMilestones = React.memo(function StreakMilestones({ streakCou
       {/* Current Streak & Next Milestone */}
       <Card className="border border-border/30 hover:border-border/50 transition-all duration-300">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+          <CardTitle className="flex items-center gap-0 sm:gap-2 text-lg">
+            <div className="hidden sm:block p-2 rounded-lg bg-primary/10 border border-primary/20">
               <TrendingUp className="h-5 w-5 text-primary" />
             </div>
             Streak Milestones
@@ -161,7 +161,7 @@ export const StreakMilestones = React.memo(function StreakMilestones({ streakCou
                       <div>
                         <p className="font-medium text-muted-foreground">{days} Day Milestone</p>
                         <p className="text-xs text-muted-foreground/70">
-                          {getMilestoneLabel(days)} • {daysToGo} days to go
+                          {getMilestoneLabel(days)} {daysToGo} days to go
                         </p>
                       </div>
                     </div>

@@ -1165,9 +1165,6 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
                       <p className="text-6xl sm:text-7xl font-bold tracking-tighter leading-none bg-gradient-to-br from-orange-600 via-orange-500 to-amber-500 bg-clip-text text-transparent">
                         {user.streak_count || 0}
                       </p>
-                      {/* Pulse indicator - positioned at top-right */}
-                      <div className="absolute top-2 right-2 h-3 w-3 rounded-full bg-orange-500 animate-pulse shadow-lg shadow-orange-500/50 z-10" />
-                      <div className="absolute top-2 right-2 h-3 w-3 rounded-full bg-orange-500/30 animate-ping z-10" />
                     </div>
                     <p className="text-base font-medium text-orange-600/70 dark:text-orange-400/70 mb-1">days</p>
                   </div>
@@ -1534,10 +1531,10 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
             </div>
 
             {/* Section Header */}
-            <div className="flex items-center gap-3 pt-2">
+            <div className="flex items-center gap-0 sm:gap-3 pt-2">
               <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
-              <div className="flex items-center gap-2 px-4">
-                <Sparkles className="h-4 w-4 text-muted-foreground" />
+              <div className="flex items-center gap-0 sm:gap-2 px-4">
+                <Sparkles className="hidden sm:block h-4 w-4 text-muted-foreground" />
                 <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Message Preview</h2>
               </div>
               <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
@@ -1550,8 +1547,8 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
               
               <CardHeader className="pb-4 relative">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/10 border border-primary/15 group-hover:bg-primary/15 transition-colors duration-300">
+                  <div className="flex items-center gap-0 sm:gap-3">
+                    <div className="hidden sm:block p-2 rounded-lg bg-primary/10 border border-primary/15 group-hover:bg-primary/15 transition-colors duration-300">
                       <Mail className="h-4.5 w-4.5 text-primary" />
                     </div>
                     <div>
@@ -1631,8 +1628,8 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
             <TabPanel value="analytics" className="space-y-6">
             {/* Page Header */}
             <div className="mb-6">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500/10 to-blue-400/5 border border-blue-500/20">
+              <div className="flex items-center gap-0 sm:gap-3 mb-2">
+                <div className="hidden sm:block p-2 rounded-lg bg-gradient-to-br from-blue-500/10 to-blue-400/5 border border-blue-500/20">
                   <TrendingUp className="h-5 w-5 text-blue-500" />
                 </div>
                 <div>
@@ -1674,8 +1671,8 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
             <TabPanel value="achievements" className="space-y-4 sm:space-y-6">
             {/* Page Header */}
             <div className="mb-6">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-orange-500/10 to-amber-500/5 border border-orange-500/20">
+              <div className="flex items-center gap-0 sm:gap-3 mb-2">
+                <div className="hidden sm:block p-2 rounded-lg bg-gradient-to-br from-orange-500/10 to-amber-500/5 border border-orange-500/20">
                   <Trophy className="h-5 w-5 text-orange-500" />
                 </div>
                 <div>
@@ -1850,8 +1847,8 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
             <TabPanel value="history" className="space-y-6">
             {/* Page Header */}
             <div className="mb-6">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-purple-500/10 to-purple-400/5 border border-purple-500/20">
+              <div className="flex items-center gap-0 sm:gap-3 mb-2">
+                <div className="hidden sm:block p-2 rounded-lg bg-gradient-to-br from-purple-500/10 to-purple-400/5 border border-purple-500/20">
                   <History className="h-5 w-5 text-purple-500" />
                 </div>
                 <div>
@@ -1874,8 +1871,8 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
             <TabPanel value="settings" className="space-y-6">
               {/* Page Header */}
               <div className="mb-6">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 rounded-lg bg-gradient-to-br from-gray-500/10 to-gray-400/5 border border-gray-500/20">
+                <div className="flex items-center gap-0 sm:gap-3 mb-2">
+                  <div className="hidden sm:block p-2 rounded-lg bg-gradient-to-br from-gray-500/10 to-gray-400/5 border border-gray-500/20">
                     <Settings className="h-5 w-5 text-gray-500" />
                   </div>
                   <div>
@@ -1989,7 +1986,7 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
                       </div>
                     </div>
                     {!editAccountMode && (
-                      <Button onClick={() => setEditAccountMode(true)} variant="outline" size="sm" className="w-full sm:w-auto shrink-0">
+                      <Button onClick={() => setEditAccountMode(true)} variant="outline" size="sm" className="w-full sm:w-auto shrink-0 h-11 sm:h-9 touch-manipulation">
                         <Edit />
                         <span className="sm:inline">Edit</span>
                       </Button>
@@ -2078,7 +2075,7 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
                       <Button 
                         variant="outline" 
                         onClick={() => setEditAccountMode(false)} 
-                        className="flex-1 sm:flex-initial sm:min-w-[120px]"
+                        className="flex-1 sm:flex-initial sm:min-w-[120px] h-11 sm:h-9 touch-manipulation"
                       >
                         Close
                       </Button>

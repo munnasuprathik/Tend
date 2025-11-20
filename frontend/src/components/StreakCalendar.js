@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import React from "react";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/animate-ui/components/radix/dialog";
-import { ChevronLeft, ChevronRight, Mail } from "lucide-react";
+import { ChevronLeft, ChevronRight, Mail, Calendar } from "lucide-react";
 import { differenceInCalendarDays, startOfDay, format } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 
@@ -134,7 +134,10 @@ export const StreakCalendar = React.memo(function StreakCalendar({
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
         {/* Title */}
         <div className="text-center">
-          <h2 className="text-lg sm:text-xl font-bold text-foreground">Your Motivation Streak</h2>
+          <h2 className="flex items-center justify-center gap-0 sm:gap-2 text-lg sm:text-xl font-bold text-foreground">
+            <Calendar className="hidden sm:block h-5 w-5 text-primary" />
+            Your Motivation Streak
+          </h2>
         </div>
 
         {/* Month Navigation */}

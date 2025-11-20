@@ -73,7 +73,7 @@ export const WeeklyMonthlyReports = React.memo(function WeeklyMonthlyReports({ e
       <CardHeader className="pb-3 sm:pb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-2">
           <div className="flex-1">
-            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+            <CardTitle className="flex items-center gap-0 sm:gap-2 text-lg sm:text-xl">
               <div className="hidden sm:flex p-2 rounded-lg bg-gradient-to-br from-indigo-500/10 to-purple-500/5 border border-indigo-500/20">
                 <Calendar className="h-5 w-5 text-indigo-500" />
               </div>
@@ -98,16 +98,20 @@ export const WeeklyMonthlyReports = React.memo(function WeeklyMonthlyReports({ e
             }}
             className="w-full sm:w-auto shadow-sm"
           >
-            <Download className="h-4 w-4 sm:mr-2" />
+            <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" />
             <span className="sm:inline">Export</span>
           </Button>
         </div>
       </CardHeader>
       <CardContent className="p-4 sm:p-6">
         <TabGroup defaultValue="weekly" className="w-full">
-          <TabList className="grid w-full grid-cols-2 [&>*]:min-h-[44px] sm:[&>*]:min-h-0 [&>*]:touch-manipulation">
-            <Tab value="weekly" className="text-xs sm:text-sm">Weekly Report</Tab>
-            <Tab value="monthly" className="text-xs sm:text-sm">Monthly Report</Tab>
+          <TabList className="grid w-full grid-cols-2 gap-2 sm:gap-3 [&>*]:min-h-[44px] sm:[&>*]:min-h-0 [&>*]:touch-manipulation">
+            <Tab value="weekly" className="text-xs sm:text-sm font-medium px-3 sm:px-4 py-2.5 sm:py-2 rounded-lg transition-all duration-200 border border-border/50 data-[selected]:bg-background data-[selected]:border-primary data-[selected]:text-foreground data-[selected]:shadow-sm data-[not-selected]:bg-muted/30 data-[not-selected]:text-muted-foreground hover:bg-muted/50 flex items-center justify-center">
+              Weekly Report
+            </Tab>
+            <Tab value="monthly" className="text-xs sm:text-sm font-medium px-3 sm:px-4 py-2.5 sm:py-2 rounded-lg transition-all duration-200 border border-border/50 data-[selected]:bg-background data-[selected]:border-primary data-[selected]:text-foreground data-[selected]:shadow-sm data-[not-selected]:bg-muted/30 data-[not-selected]:text-muted-foreground hover:bg-muted/50 flex items-center justify-center">
+              Monthly Report
+            </Tab>
           </TabList>
 
           <TabPanels>
@@ -125,8 +129,8 @@ export const WeeklyMonthlyReports = React.memo(function WeeklyMonthlyReports({ e
                   </div>
 
                   <div className="p-4 rounded-xl bg-green-500/5 border border-green-500/10 hover:border-green-500/20 transition-colors">
-                    <div className="flex items-center gap-2 mb-2">
-                      <TrendingUp className="h-4 w-4 text-green-600 flex-shrink-0" />
+                    <div className="flex items-center gap-1.5 sm:gap-2 mb-2">
+                      <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-600 flex-shrink-0" />
                       <p className="text-xs sm:text-sm font-medium text-muted-foreground">Avg Rating</p>
                     </div>
                     <p className="text-2xl font-bold text-foreground">
@@ -138,8 +142,8 @@ export const WeeklyMonthlyReports = React.memo(function WeeklyMonthlyReports({ e
                   </div>
 
                   <div className="p-4 rounded-xl bg-purple-500/5 border border-purple-500/10 hover:border-purple-500/20 transition-colors">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Target className="h-4 w-4 text-purple-600 flex-shrink-0" />
+                    <div className="flex items-center gap-1.5 sm:gap-2 mb-2">
+                      <Target className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-600 flex-shrink-0" />
                       <p className="text-xs sm:text-sm font-medium text-muted-foreground">Current Streak</p>
                     </div>
                     <p className="text-2xl font-bold text-foreground">
@@ -167,8 +171,8 @@ export const WeeklyMonthlyReports = React.memo(function WeeklyMonthlyReports({ e
               <div className="space-y-3 sm:space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/10 hover:border-blue-500/20 transition-colors">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Mail className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                    <div className="flex items-center gap-1.5 sm:gap-2 mb-2">
+                      <Mail className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-600 flex-shrink-0" />
                       <p className="text-xs sm:text-sm font-medium text-muted-foreground">Total Messages</p>
                     </div>
                     <p className="text-2xl font-bold text-foreground">{monthlyData.total_messages || 0}</p>
@@ -176,8 +180,8 @@ export const WeeklyMonthlyReports = React.memo(function WeeklyMonthlyReports({ e
                   </div>
 
                   <div className="p-4 rounded-xl bg-purple-500/5 border border-purple-500/10 hover:border-purple-500/20 transition-colors">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Target className="h-4 w-4 text-purple-600 flex-shrink-0" />
+                    <div className="flex items-center gap-1.5 sm:gap-2 mb-2">
+                      <Target className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-600 flex-shrink-0" />
                       <p className="text-xs sm:text-sm font-medium text-muted-foreground">Current Streak</p>
                     </div>
                     <p className="text-2xl font-bold text-foreground">

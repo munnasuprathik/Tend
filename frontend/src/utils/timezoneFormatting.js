@@ -95,7 +95,7 @@ export const formatDateTimeForTimezone = (
     const zoneLabel =
       includeZone && timezone && timezone !== "UTC" ? ` (${timezone})` : "";
 
-    return `${datePart} · ${timePart}${zoneLabel}`;
+    return `${datePart} ${timePart}${zoneLabel}`;
   } catch (error) {
     console.error("Timezone formatting error:", error, value, timezone);
     return date.toLocaleString();

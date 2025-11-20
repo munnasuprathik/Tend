@@ -108,7 +108,7 @@ export function DashboardLayout({
               variant="ghost"
               size="icon"
               onClick={() => setSidebarOpen(false)}
-              className="h-9 w-9"
+              className="h-11 w-11 sm:h-9 sm:w-9 touch-manipulation"
             >
               <X className="h-5 w-5" />
             </Button>
@@ -166,7 +166,7 @@ export function DashboardLayout({
                 variant="ghost"
                 size="icon"
                 onClick={onLogout}
-                className="h-9 w-9 text-muted-foreground hover:text-destructive transition-colors hover:bg-muted/50"
+                className="h-11 w-11 sm:h-9 sm:w-9 text-muted-foreground hover:text-destructive transition-colors hover:bg-muted/50 touch-manipulation"
               >
                 <LogOut className="h-5 w-5" />
               </Button>
@@ -205,7 +205,7 @@ export function DashboardLayout({
         </div>
 
         {/* Main content area - Adjusted for bottom nav on mobile */}
-        <main className="py-6 sm:py-8 px-4 sm:px-6 lg:px-10 pb-24 lg:pb-8">
+        <main className="py-4 sm:py-8 px-4 sm:px-6 lg:px-10 pb-20 sm:pb-24 lg:pb-8">
           <div className="mx-auto max-w-7xl">
             {/* Content */}
             <div className="space-y-6 sm:space-y-8">
@@ -216,7 +216,7 @@ export function DashboardLayout({
 
         {/* Mobile Bottom Dock Navigation - Instagram Style Refined */}
         <div className="fixed bottom-0 inset-x-0 z-50 lg:hidden pb-safe-area-inset-bottom bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-t border-border/10 shadow-[0_-1px_3px_rgba(0,0,0,0.02)]">
-          <div className="flex items-center justify-between h-16 px-6 sm:px-12 max-w-md mx-auto">
+          <div className="flex items-center justify-between h-18 px-4 sm:px-12 max-w-md mx-auto gap-1">
             {navigation.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.value;
@@ -227,10 +227,10 @@ export function DashboardLayout({
                    <button
                     key={item.value}
                     onClick={() => onTabChange && onTabChange(item.value)}
-                    className="flex items-center justify-center w-10 h-10 rounded-full transition-transform active:scale-90"
+                    className="flex items-center justify-center w-12 h-12 sm:w-10 sm:h-10 rounded-full transition-transform active:scale-90 touch-manipulation"
                   >
                     <div className={cn(
-                      "h-7 w-7 rounded-full overflow-hidden ring-offset-background transition-all duration-200",
+                      "h-8 w-8 sm:h-7 sm:w-7 rounded-full overflow-hidden ring-offset-background transition-all duration-200",
                       isActive ? "ring-2 ring-primary ring-offset-2" : "ring-1 ring-border"
                     )}>
                       <div className="h-full w-full bg-muted flex items-center justify-center">
@@ -249,12 +249,12 @@ export function DashboardLayout({
                 <button
                   key={item.value}
                   onClick={() => onTabChange && onTabChange(item.value)}
-                  className="flex items-center justify-center w-10 h-10 rounded-lg active:scale-90 transition-transform hover:bg-muted/30"
+                  className="flex items-center justify-center w-12 h-12 sm:w-10 sm:h-10 rounded-lg active:scale-90 transition-transform hover:bg-muted/30 touch-manipulation"
                 >
                   <div className="relative">
                     <Icon 
                       className={cn(
-                        "h-[26px] w-[26px] transition-all duration-300", 
+                        "h-[28px] w-[28px] sm:h-[26px] sm:w-[26px] transition-all duration-300", 
                         isActive 
                           ? "stroke-[2.5px] text-primary scale-105" 
                           : "stroke-[1.75px] text-muted-foreground hover:text-foreground"

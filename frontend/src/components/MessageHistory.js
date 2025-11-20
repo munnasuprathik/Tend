@@ -266,13 +266,13 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
   return (
     <div className="space-y-6">
       {/* Stats Cards - Compact Design with Visual Indicators */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-3 sm:mb-2">
           <Card className="border border-blue-500/20 bg-gradient-to-br from-blue-500/5 to-blue-400/3 hover:border-blue-500/30 hover:shadow-md transition-all duration-300 group">
-            <CardContent className="p-5">
+            <CardContent className="p-4 sm:p-5">
               <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 group-hover:bg-blue-500/15 transition-colors">
-                    <MessageSquare className="h-4 w-4 text-blue-500" />
+                <div className="flex items-center gap-2 sm:gap-2.5">
+                  <div className="p-1.5 sm:p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 group-hover:bg-blue-500/15 transition-colors">
+                    <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-500" />
                   </div>
                   <p className="text-xs font-semibold text-blue-600/70 dark:text-blue-400/70 uppercase tracking-wider">Total Messages</p>
                 </div>
@@ -293,11 +293,11 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
           </Card>
 
           <Card className="border border-green-500/20 bg-gradient-to-br from-green-500/5 to-green-400/3 hover:border-green-500/30 hover:shadow-md transition-all duration-300 group">
-            <CardContent className="p-5">
+            <CardContent className="p-4 sm:p-5">
               <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/20 group-hover:bg-green-500/15 transition-colors">
-                    <Reply className="h-4 w-4 text-green-500" />
+                <div className="flex items-center gap-2 sm:gap-2.5">
+                  <div className="p-1.5 sm:p-2 rounded-lg bg-green-500/10 border border-green-500/20 group-hover:bg-green-500/15 transition-colors">
+                    <Reply className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500" />
                   </div>
                   <p className="text-xs font-semibold text-green-600/70 dark:text-green-400/70 uppercase tracking-wider">Replies</p>
                 </div>
@@ -320,11 +320,11 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
           </Card>
 
           <Card className="border border-purple-500/20 bg-gradient-to-br from-purple-500/5 to-purple-400/3 hover:border-purple-500/30 hover:shadow-md transition-all duration-300 group">
-            <CardContent className="p-5">
+            <CardContent className="p-4 sm:p-5">
               <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20 group-hover:bg-purple-500/15 transition-colors">
-                    <Filter className="h-4 w-4 text-purple-500" />
+                <div className="flex items-center gap-2 sm:gap-2.5">
+                  <div className="p-1.5 sm:p-2 rounded-lg bg-purple-500/10 border border-purple-500/20 group-hover:bg-purple-500/15 transition-colors">
+                    <Filter className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-500" />
                   </div>
                   <p className="text-xs font-semibold text-purple-600/70 dark:text-purple-400/70 uppercase tracking-wider">Showing</p>
                 </div>
@@ -353,7 +353,7 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
           <div className="flex flex-col sm:flex-row gap-4">
             {/* Search */}
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
               <Input
                 placeholder="Search messages, personalities, or content..."
                 value={searchQuery}
@@ -365,7 +365,7 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
                   onClick={() => setSearchQuery("")}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 </button>
               )}
             </div>
@@ -373,8 +373,8 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
             {/* Rating Filter */}
             <Select value={filterRating?.toString() || "all"} onValueChange={(value) => setFilterRating(value === "all" ? null : Number(value))}>
               <SelectTrigger className="w-full sm:w-[180px] h-10">
-                <div className="flex items-center gap-2">
-                  <Star className="h-4 w-4" />
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <Star className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
                   <SelectValue placeholder="Filter by rating" />
                 </div>
               </SelectTrigger>
@@ -393,9 +393,9 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
             <Button
               variant="outline"
               onClick={() => exportMessageHistory(messages)}
-              className="h-10 shrink-0"
+              className="h-11 sm:h-10 shrink-0 touch-manipulation"
             >
-              <Download className="h-4 w-4" />
+              <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               <span className="hidden sm:inline">Export</span>
             </Button>
           </div>
@@ -420,12 +420,12 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
           {messagesByDate.map(([dateGroup, messages]) => (
             <div key={dateGroup} className="space-y-4">
               {/* Date Group Header */}
-              <div className="flex items-center gap-3 sticky top-0 z-10 bg-background/80 backdrop-blur-sm py-2 -mt-2">
+              <div className="flex items-center gap-2 sm:gap-3 sticky top-0 z-10 bg-background/80 backdrop-blur-sm py-2 -mt-2">
                 <div className="h-px flex-1 bg-border" />
-                <div className="flex items-center gap-2 px-3">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">{dateGroup}</span>
-                  <Badge variant="secondary" className="text-xs">{messages.length}</Badge>
+                <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 flex-shrink-0">
+                  <Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
+                  <span className="text-xs sm:text-sm font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">{dateGroup}</span>
+                  <Badge variant="secondary" className="text-xs flex-shrink-0">{messages.length}</Badge>
                 </div>
                 <div className="h-px flex-1 bg-border" />
               </div>
@@ -445,39 +445,39 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
                     hasReplies && "border-2 border-border/40"
                   )}
                 >
-                  <CardHeader className="pb-4">
-                    <div className="flex items-start justify-between gap-4">
+                  <CardHeader className="pb-3 sm:pb-4">
+                    <div className="flex items-center justify-between gap-2 sm:gap-4">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-3">
-                          <div className="p-2 rounded-lg bg-muted group-hover:bg-accent transition-colors">
-                            <User className="h-5 w-5 text-foreground" />
+                        <div className="flex items-center gap-2 sm:gap-3 mb-2.5 sm:mb-3">
+                          <div className="p-1.5 sm:p-2 rounded-lg bg-muted group-hover:bg-accent transition-colors flex-shrink-0">
+                            <User className="h-4 w-4 sm:h-5 sm:w-5 text-foreground" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <CardTitle className="text-lg font-semibold mb-1">
+                            <CardTitle className="text-base sm:text-lg font-semibold mb-1 leading-tight">
                               {message.personality?.value || "Unknown Personality"}
                             </CardTitle>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Clock className="h-3.5 w-3.5" />
-                              <span>{formatDateTimeForTimezone(message.sent_at, timezone)}</span>
+                            <div className="flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm text-muted-foreground">
+                              <Clock className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
+                              <span className="truncate">{formatDateTimeForTimezone(message.sent_at, timezone)}</span>
                             </div>
                           </div>
                         </div>
 
                         {/* Badges */}
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap mt-1">
                           {hasReplies && (
-                            <Badge variant="outline" className="gap-1.5">
-                              <CheckCircle2 className="h-3 w-3" />
-                              {message.replies.length === 1 ? 'Replied' : `${message.replies.length} replies`}
+                            <Badge variant="outline" className="gap-1 sm:gap-1.5 text-xs items-center">
+                              <CheckCircle2 className="h-2.5 w-2.5 sm:h-3 sm:w-3 flex-shrink-0" />
+                              <span>{message.replies.length === 1 ? 'Replied' : `${message.replies.length} replies`}</span>
                             </Badge>
                           )}
                           {message.used_fallback && (
-                            <Badge variant="outline">Backup</Badge>
+                            <Badge variant="outline" className="text-xs">Backup</Badge>
                           )}
                           {message.rating && (
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-0.5 sm:gap-1">
                               {[...Array(message.rating)].map((_, i) => (
-                                <Star key={i} className="h-4 w-4 fill-foreground text-foreground" />
+                                <Star key={i} className="h-3 w-3 sm:h-4 sm:w-4 fill-foreground text-foreground flex-shrink-0" />
                               ))}
                             </div>
                           )}
@@ -485,16 +485,16 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
                       </div>
 
                       {/* Actions */}
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => toggleFavorite(message.id)}
-                          className="h-9 w-9"
+                          className="h-9 w-9 sm:h-9 sm:w-9 touch-manipulation"
                         >
                           <Heart
                             className={cn(
-                              "h-4 w-4 transition-colors",
+                              "h-3.5 w-3.5 sm:h-4 sm:w-4 transition-colors",
                               isFavorite ? "fill-foreground text-foreground" : "text-muted-foreground hover:text-foreground"
                             )}
                           />
@@ -503,10 +503,10 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
                     </div>
                   </CardHeader>
 
-                  <CardContent className="space-y-4">
+                  <CardContent className="space-y-3 sm:space-y-4 pt-0">
                     {/* Message Content */}
-                    <div className="rounded-lg p-4 bg-muted/50 border border-border">
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
+                    <div className="rounded-lg p-3 sm:p-4 bg-muted/50 border border-border">
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground break-words">
                         {message.message}
                       </p>
                     </div>
@@ -523,9 +523,9 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
                             setFeedbackText("");
                           }}
                           data-testid="rate-message-btn"
-                          className="w-full sm:w-auto"
+                          className="w-full sm:w-auto h-11 sm:h-9 touch-manipulation"
                         >
-                          <Star className={cn("h-4 w-4", message.rating && "fill-foreground text-foreground")} />
+                          <Star className={cn("h-3.5 w-3.5 sm:h-4 sm:w-4", message.rating && "fill-foreground text-foreground")} />
                           {message.rating ? 'Update Rating' : 'Rate This Message'}
                         </Button>
                       </DialogTrigger>
@@ -569,7 +569,7 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
                           <Button 
                             onClick={submitFeedback} 
                             disabled={submitting || rating === 0}
-                            className="w-full h-12 text-base font-medium shadow-sm mt-2"
+                            className="w-full h-12 sm:h-11 text-base font-medium shadow-sm mt-2 touch-manipulation"
                           >
                             {submitting ? (
                               <>
@@ -589,9 +589,9 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
                 {/* Replies Section */}
                 {hasReplies && (
                   <div className="ml-0 sm:ml-8 space-y-3 pl-0 sm:pl-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Reply className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium text-muted-foreground">
+                    <div className="flex items-center gap-1.5 sm:gap-2 mb-2">
+                      <Reply className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-xs sm:text-sm font-medium text-muted-foreground">
                         {message.replies.length === 1 ? 'Your Reply' : 'Your Replies'}
                       </span>
                     </div>
@@ -602,15 +602,15 @@ export const MessageHistory = React.memo(function MessageHistory({ email, timezo
                       >
                         <CardHeader className="pb-3">
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <div className="p-1.5 rounded-lg bg-muted">
-                                <Reply className="h-4 w-4 text-foreground" />
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                              <div className="p-1.5 rounded-lg bg-muted flex-shrink-0">
+                                <Reply className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-foreground" />
                               </div>
-                              <div>
-                                <CardTitle className="text-sm font-semibold">Your Reply</CardTitle>
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                                  <Clock className="h-3 w-3" />
-                                  <span>{formatDateTimeForTimezone(reply.sent_at, timezone)}</span>
+                              <div className="flex-1 min-w-0">
+                                <CardTitle className="text-xs sm:text-sm font-semibold">Your Reply</CardTitle>
+                                <div className="flex items-center gap-1.5 sm:gap-2 text-xs text-muted-foreground mt-0.5">
+                                  <Clock className="h-2.5 w-2.5 sm:h-3 sm:w-3 flex-shrink-0" />
+                                  <span className="truncate">{formatDateTimeForTimezone(reply.sent_at, timezone)}</span>
                                 </div>
                               </div>
                             </div>
