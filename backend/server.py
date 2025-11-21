@@ -91,6 +91,9 @@ try:
         render_email_html, generate_interactive_defaults, resolve_streak_badge,
         fallback_subject_line, derive_goal_theme, cleanup_message_text
     )
+    from backend.utils.validation import (
+        validate_timezone, validate_email, validate_name, validate_schedule
+    )
 except ImportError:
     # Fallback to relative imports when running from backend directory
     from config import (
@@ -384,9 +387,13 @@ def derive_goal_theme(goals: str) -> str:
 
 
 def cleanup_message_text(message: str) -> str:
-    """Remove boilerplate lines and keep the message concise."""
+    """Remove boilerplate lines, em-dashes, and keep the message concise."""
     if not message:
         return ""
+    
+    # Remove em-dashes (—) and replace with regular dashes
+    # Replace em-dash with regular dash for better compatibility
+    message = message.replace('—', '-')  # Replace em-dash with regular dash
 
     filtered_lines = []
     for raw_line in message.splitlines():
@@ -731,23 +738,79 @@ async def generate_unique_motivational_message(
         include_analogy = random.random() < 0.6
         analogy_instruction = random.choice(ANALOGY_PROMPTS) if include_analogy else ""
         dare_instruction = random.choice(FRIENDLY_DARES) if random.random() < 0.5 else ""
-        # Personality style via research
-        voice_profile = await fetch_personality_voice(personality)
-        if voice_profile:
-            personality_prompt = f"""VOICE PROFILE:
+        # Enhanced personality style via deep research
+        from backend.utils.enhanced_personality_research import (
+            research_famous_personality, 
+            research_custom_personality,
+            get_enhanced_tone_instruction
+        )
+        
+        personality_prompt = ""
+        if personality.type == "famous":
+            # Deep research for ALL famous personalities (works universally for any personality)
+            # This works for: Elon Musk, Oprah Winfrey, Steve Jobs, Tony Robbins, etc.
+            logger.info(f"🔍 Starting deep research for famous personality: {personality.value}")
+            research_result = await research_famous_personality(personality.value)
+            if research_result and research_result.get("voice_instruction"):
+                personality_prompt = research_result["voice_instruction"]
+                logger.info(f"✅ Deep personality research completed for {personality.value} - voice profile extracted")
+            else:
+                # Fallback: use basic research (still works for all personalities)
+                logger.warning(f"⚠️ Deep research failed for {personality.value}, using fallback research")
+                voice_profile = await fetch_personality_voice(personality)
+                if voice_profile:
+                    personality_prompt = f"""VOICE PROFILE:
     {voice_profile}
     RULES:
-    - Write exactly in this voice.
+    - Write exactly in this voice - capture their authentic communication style.
+    - Use their vocabulary, sentence patterns, and energy level.
+    - Make it feel like {personality.value} is talking directly to the user.
     - Do not mention these notes, the personality name, or that you researched it.
-    - Use natural, human language - no AI phrasing."""
-        else:
-            fallback_voice = personality.value if personality.value else "warm, encouraging mentor"
-            personality_prompt = f"""VOICE PROFILE:
-Sound like a {fallback_voice}.
+    - Use natural, human language - no AI phrasing.
+    - This works for ANY personality - adapt to {personality.value}'s unique style."""
+                else:
+                    # Ultimate fallback: still works generically for any personality
+                    personality_prompt = f"""VOICE PROFILE:
+Sound like {personality.value} - research their actual communication style, vocabulary, sentence patterns, and energy.
+
 RULES:
 - Capture their energy and mannerisms authentically.
+- Use their actual speaking/writing patterns.
+- Make it feel authentic to how {personality.value} actually communicates.
 - Do not say you are copying anyone or mention tone explicitly.
-- Keep the language human and grounded."""
+- Keep the language human and grounded.
+- This works for ANY famous personality - adapt to {personality.value}'s unique characteristics.
+- Research how {personality.value} actually talks and writes, then write in that exact style."""
+        elif personality.type == "tone":
+            # Enhanced tone instruction
+            personality_prompt = get_enhanced_tone_instruction(personality.value)
+            logger.info(f"✅ Enhanced tone instruction loaded for {personality.value}")
+        elif personality.type == "custom":
+            # Research-first approach for custom personalities
+            research_result = await research_custom_personality(personality.value)
+            if research_result and research_result.get("voice_instruction"):
+                personality_prompt = research_result["voice_instruction"]
+                logger.info(f"✅ Custom personality research completed")
+            else:
+                # Fallback: analyze the custom description deeply
+                personality_prompt = f"""CUSTOM PERSONALITY VOICE PROFILE:
+
+CUSTOM DESCRIPTION:
+{personality.value}
+
+CRITICAL INSTRUCTIONS:
+1. Deeply understand what this custom style means - analyze the communication philosophy, emotional tone, and structural preferences.
+2. Research and understand the patterns implied in this description.
+3. Write content that authentically embodies this style - not generic content with a label.
+4. Make every email feel uniquely crafted in this custom style.
+5. The content, structure, vocabulary, and approach MUST change based on this custom description.
+
+RULES:
+- Understand the underlying communication philosophy
+- Match the emotional tone exactly
+- Use appropriate vocabulary and sentence structure
+- Make it feel authentic to this custom style
+- Do not use generic motivational language - make it specific to this style"""
         
         # Streak milestone messages
         streak_context = ""
@@ -774,7 +837,7 @@ RULES:
         else:
             latest_persona = None
         
-        prompt = f"""You are an elite personal coach creating a UNIQUE daily motivation message.
+        prompt = f"""You are an elite personal coach creating a COMPLETELY UNIQUE, FRESH, and ENJOYABLE daily motivation message. Every email must feel new, different, and delightful to read.
 
 {personality_prompt}
 
@@ -792,18 +855,18 @@ EMOTIONAL ARC: {emotional_arc}
 {("RECENT THEMES TO AVOID:\n" + recent_themes_block) if recent_themes_block else ""}
 {analogy_instruction}
 
-CRITICAL RULES:
+CRITICAL RULES FOR UNIQUENESS AND FRESHNESS:
 1. NEVER copy/paste the user's goals - reference them creatively and naturally
-2. Make it COMPLETELY UNIQUE - no generic phrases
+2. Make it COMPLETELY UNIQUE - no generic phrases, cliches, or repeated patterns
 3. Be SPECIFIC and ACTIONABLE - not vague platitudes
-4. Keep it tight - no more than TWO short paragraphs and one single-sentence closing action line.
-5. Make it CONVERSATIONAL - like texting a friend who cares.
-6. If a research insight is provided, weave it naturally into the story without sounding like a summary or citing the source.
-7. Do not repeat ideas from recent themes. Never mention that you are avoiding repetition.
-8. Vary sentence length - mix short punchy lines with longer flowing ones.
-9. Sound undeniably human; use tactile details and sensory language.
+4. Keep it tight - no more than TWO short paragraphs and one single-sentence closing action line
+5. Make it CONVERSATIONAL - like texting a friend who cares
+6. If a research insight is provided, weave it naturally into the story without sounding like a summary or citing the source
+7. Do not repeat ideas from recent themes. Never mention that you are avoiding repetition
+8. Vary sentence length dramatically - mix 3-word punches with 20-word flows
+9. Sound undeniably human; use tactile details and sensory language
 10. Close with a crystal-clear micro action. {("Then add: " + dare_instruction) if dare_instruction else ""}
-11. Do NOT use emojis, emoticons, or Unicode pictographs; rely on plain words or ASCII icons (e.g. [*], ->) for emphasis.
+11. Do NOT use em-dashes (—); rely on plain words, ASCII icons (e.g. [*], ->), regular dashes (-), or commas for emphasis and connections
 12. After the core message, create a section formatted exactly like this:
 
 INTERACTIVE CHECK-IN:
@@ -814,6 +877,13 @@ QUICK REPLY PROMPT:
 
 Make both bullets unique to this user and today's message.
 
+PERSONALITY/TONE REQUIREMENTS (CRITICAL):
+- The content, structure, vocabulary, and approach MUST authentically reflect the personality/tone
+- If personality is famous (e.g., Elon Musk), write EXACTLY in their voice - use their vocabulary, sentence patterns, energy
+- If tone is selected, the entire email must feel authentically that tone - not generic content with a label
+- If custom, deeply understand and embody the custom style description
+- Make it feel like the personality/tone is talking directly to the user
+- Every email should feel fresh and new while staying true to the personality/tone
 
 MESSAGE TYPE GUIDELINES:
 - motivational_story: Share a brief, real example of someone who overcame similar challenges
@@ -824,23 +894,27 @@ MESSAGE TYPE GUIDELINES:
 - real_world_example: Use concrete analogies from business/sports/life
 
 STRUCTURE:
-1. Hook with the streak celebration or surprising insight
-2. Core message (2-3 paragraphs) - tie to their goals WITHOUT quoting them
-3. Call to action or mindset shift
+1. Hook with the streak celebration or surprising insight (UNIQUE from last 3 emails)
+2. Core message (2-3 paragraphs) - tie to their goals WITHOUT quoting them (FRESH angle)
+3. Call to action or mindset shift (DIFFERENT approach than recent emails)
 4. DO NOT include a question - it will be added separately
 
-Write an authentic, powerful message that feels personal and impossible to ignore:"""
+Write an authentic, powerful message that feels personal, impossible to ignore, and COMPLETELY FRESH:"""
 
         response = await openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are a world-class motivational coach who creates deeply personal, unique messages that inspire real action. You never use cliches, never repeat yourself, and you always sound human - not like an AI summarizer. Every message feels handcrafted."},
+                {
+                    "role": "system", 
+                    "content": "You are a world-class motivational coach who creates deeply personal, unique messages that inspire real action. You never use cliches, never repeat yourself, and you always sound human - not like an AI summarizer. Every message feels handcrafted, fresh, and authentic to the personality/tone. You ensure every email is completely different from previous ones while staying true to the communication style."
+                },
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.9,  # Higher for more creativity
-            max_tokens=500,
-            presence_penalty=0.6,  # Avoid repetition
-            frequency_penalty=0.6   # Encourage variety
+            temperature=0.95,  # Higher for maximum creativity and variety
+            max_tokens=600,  # Increased for more detailed, personality-authentic content
+            presence_penalty=0.8,  # Strong penalty to avoid repetition
+            frequency_penalty=0.8,  # Strong penalty to encourage variety
+            top_p=0.95  # Allow more creative word choices
         )
         
         message = strip_emojis(response.choices[0].message.content.strip())
@@ -865,7 +939,7 @@ Write an authentic, powerful message that feels personal and impossible to ignor
         ci_defaults, qr_defaults = generate_interactive_defaults(streak_count, goals)
         default_msg = (
             f"Day {streak_count} of your journey.\n\n"
-            "You already know the lever that moves the day—choose it and commit.\n\n"
+            "You already know the lever that moves the day - choose it and commit.\n\n"
             "INTERACTIVE CHECK-IN:\n"
             + "\n".join(f"- {line}" for line in ci_defaults)
             + "\n\nQUICK REPLY PROMPT:\n"
@@ -1132,33 +1206,77 @@ async def compose_subject_line(
     goals = (user_data.get("goals") or "").strip()
     goal_theme = derive_goal_theme(goals)
     streak = user_data.get("streak_count", 0)
-    fallback_subject = fallback_subject_line(streak, goals)
+    
+    # Get recent subjects to avoid repetition
+    user_email = user_data.get("email", "")
+    recent_subjects = []
+    try:
+        recent_messages = await db.message_history.find(
+            {"email": user_email},
+            {"subject": 1}
+        ).sort("sent_at", -1).limit(5).to_list(5)
+        recent_subjects = [msg.get("subject", "") for msg in recent_messages if msg.get("subject")]
+    except Exception:
+        pass
+    
+    # Dynamic fallback (not hardcoded) - will be generated if LLM fails
+    fallback_subject = await fallback_subject_line(streak, goals, personality)
 
     try:
+        # Get personality voice context for subject line
+        personality_context = ""
+        if personality.type == "famous":
+            personality_context = f"Write a subject line that hints at {personality.value}'s communication style - {personality.value} would write subject lines that are [their style: direct/energetic/philosophical/etc]"
+        elif personality.type == "tone":
+            tone_lower = personality.value.lower()
+            if "funny" in tone_lower or "witty" in tone_lower:
+                personality_context = "Write with light humor and playfulness"
+            elif "serious" in tone_lower or "direct" in tone_lower:
+                personality_context = "Write with clarity and directness"
+            elif "energetic" in tone_lower or "enthusiastic" in tone_lower:
+                personality_context = "Write with energy and excitement"
+            elif "calm" in tone_lower or "meditative" in tone_lower:
+                personality_context = "Write with peace and calm"
+            else:
+                personality_context = f"Write in a {personality.value} style"
+        elif personality.type == "custom":
+            personality_context = f"Write a subject line that reflects this custom style: {personality.value[:100]}"
+        
         prompt = f"""
-You are crafting an email subject line for a motivational newsletter.
+You are crafting a COMPLETELY UNIQUE email subject line for a motivational newsletter.
 
 REQUIREMENTS:
-- Keep it under 60 characters.
-- Do NOT mention any personality, persona, or tone names.
-- Make it fresh, human, and emotionally resonant.
-- Do NOT copy the user's goal wording; paraphrase or imply it instead.
-- Use the goal theme as a springboard but phrase it in new words.
-- Hint at today's message theme without sounding clickbait or repeating prior subjects.
-- If a streak count exists, acknowledge progress without repeating the word "streak".
-- If a research insight is provided, allude to it without sounding academic.
+- Keep it under 60 characters (ideally 40-55 characters)
+- Do NOT mention any personality, persona, or tone names
+- Make it fresh, human, and emotionally resonant
+- Do NOT copy the user's goal wording; paraphrase or imply it instead
+- Use the goal theme as a springboard but phrase it in completely new words
+- Hint at today's message theme without sounding clickbait
+- If a streak count exists, acknowledge progress creatively without using the word "streak"
+- If a research insight is provided, allude to it naturally without sounding academic
+- MUST be completely different from recent subjects: {', '.join(recent_subjects[:3]) if recent_subjects else 'None'}
+- Make it feel personal and handcrafted, not templated
+
+PERSONALITY/TONE CONTEXT:
+{personality_context}
 
 INPUTS:
 - Streak count: {streak}
 - Message type: {message_type}
 - Goal theme: {goal_theme or "None supplied"}
 - Research snippet: {research_snippet or "None"}
-- Previous fallback used: {"Yes" if used_fallback else "No"}
+- Recent subjects to avoid: {', '.join(recent_subjects[:3]) if recent_subjects else 'None'}
 
-Return only the subject line."""  # noqa: E501
+Generate a subject line that is:
+1. Completely unique from recent subjects
+2. Authentic to the personality/tone style
+3. Fresh and engaging
+4. Personal and human
+
+Return only the subject line, no quotes, no explanations."""  # noqa: E501
 
         response = await openai_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",  # Upgraded to gpt-4o for better quality
             messages=[
                 {
                     "role": "system",
@@ -1169,20 +1287,22 @@ Return only the subject line."""  # noqa: E501
                         "- Create curiosity without clickbait\n"
                         "- Are specific and concrete, avoiding vague phrases\n"
                         "- Use active voice and strong verbs\n"
-                        "- Are 40-80 characters (6-12 words)\n"
+                        "- Are 40-60 characters (6-10 words)\n"
                         "- Never mention persona names, tone names, or meta-references\n"
                         "- Avoid cliches like 'crush it', 'game-changer', 'unlock your potential'\n"
-                        "- Feel urgent but not desperate\n\n"
+                        "- Feel urgent but not desperate\n"
+                        "- Are COMPLETELY UNIQUE from recent subjects\n"
+                        "- Reflect the personality/tone style authentically\n\n"
                         "Generate ONE subject line only. No quotes, no explanations."
                     ),
                 },
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.7,  # More consistent than 0.75
-            max_tokens=30,    # Increased from 24 to prevent cutoffs
-            top_p=0.9,        # Quality control
-            presence_penalty=0.3,   # Avoid repetition
-            frequency_penalty=0.3,  # Encourage variety
+            temperature=0.85,  # Higher for more creativity and variety
+            max_tokens=40,    # Increased for better quality
+            top_p=0.95,        # Allow more creative choices
+            presence_penalty=0.6,   # Strong penalty to avoid repetition
+            frequency_penalty=0.6,  # Strong penalty to encourage variety
         )
 
         subject = response.choices[0].message.content.strip().strip('"\'')
@@ -2321,17 +2441,89 @@ async def get_user(email: str):
     return user
 
 @api_router.put("/users/{email}")
-async def update_user(email: str, updates: UserProfileUpdate):
+@limiter.limit("10/minute")  # Rate limit: 10 updates per minute per IP
+async def update_user(email: str, updates: UserProfileUpdate, request: Request):
     start_time = time.time()
     logger.info(f"📝 User update request for: {email}")
+    
+    # Validate email parameter
+    try:
+        email_valid, email_error = validate_email(email)
+        if not email_valid:
+            logger.warning(f"⚠️ Invalid email format: {email}")
+            raise HTTPException(
+                status_code=400, 
+                detail={
+                    "error": "validation_error",
+                    "message": email_error,
+                    "field": "email",
+                    "code": "INVALID_EMAIL"
+                }
+            )
+    except NameError:
+        # Fallback if validation not imported
+        pass
     
     user = await db.users.find_one({"email": email}, {"_id": 0})
     if not user:
         logger.warning(f"⚠️ Update attempt for non-existent user: {email}")
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(
+            status_code=404, 
+            detail={
+                "error": "not_found",
+                "message": "User not found",
+                "code": "USER_NOT_FOUND"
+            }
+        )
     
     update_data = {k: v for k, v in updates.model_dump().items() if v is not None}
     logger.debug(f"Fields to update: {list(update_data.keys())}")
+    
+    # Input validation
+    try:
+        if 'name' in update_data:
+            name_valid, name_error = validate_name(update_data['name'])
+            if not name_valid:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "validation_error",
+                        "message": name_error,
+                        "field": "name",
+                        "code": "INVALID_NAME"
+                    }
+                )
+        
+        if 'user_timezone' in update_data:
+            timezone_valid, timezone_error = validate_timezone(update_data['user_timezone'])
+            if not timezone_valid:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "validation_error",
+                        "message": timezone_error,
+                        "field": "user_timezone",
+                        "code": "INVALID_TIMEZONE"
+                    }
+                )
+        
+        if 'schedule' in update_data:
+            schedule_valid, schedule_error = validate_schedule(update_data['schedule'])
+            if not schedule_valid:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "validation_error",
+                        "message": schedule_error,
+                        "field": "schedule",
+                        "code": "INVALID_SCHEDULE"
+                    }
+                )
+    except NameError:
+        # Fallback if validation functions not imported - skip validation
+        logger.warning("Validation functions not available, skipping validation")
+    except HTTPException:
+        raise
     
     # Sync schedule.timezone with user_timezone when user_timezone is updated
     if 'user_timezone' in update_data:
@@ -2404,8 +2596,30 @@ async def update_user(email: str, updates: UserProfileUpdate):
                 change_details=update_data
             )
         
-        # Now update the user
-        await db.users.update_one({"email": email}, {"$set": update_data})
+        # Atomic update: Use update_one which is atomic in MongoDB
+        try:
+            result = await db.users.update_one({"email": email}, {"$set": update_data})
+            if result.matched_count == 0:
+                # This shouldn't happen, but handle it gracefully
+                logger.error(f"⚠️ Update failed: User {email} not found during update")
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "error": "update_failed",
+                        "message": "User not found during update",
+                        "code": "UPDATE_FAILED"
+                    }
+                )
+        except Exception as e:
+            logger.error(f"❌ Database update error for {email}: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "database_error",
+                    "message": "Failed to update user. Please try again.",
+                    "code": "DATABASE_ERROR"
+                }
+            )
         
         # Track activity
         await tracker.log_user_activity(
@@ -2427,6 +2641,19 @@ async def update_user(email: str, updates: UserProfileUpdate):
     
     update_duration = time.time() - start_time
     logger.info(f"✅ User update completed for {email} in {update_duration:.2f}s")
+    
+    # Log API call for monitoring
+    try:
+        await tracker.log_api_call(
+            endpoint=f"/users/{email}",
+            method="PUT",
+            status_code=200,
+            response_time_ms=int(update_duration * 1000),
+            user_email=email,
+            ip_address=request.client.host if request.client else None
+        )
+    except Exception as e:
+        logger.warning(f"Failed to log API call: {str(e)}")
     
     return updated_user
 
@@ -4860,24 +5087,37 @@ Generate a NEW, UNIQUE email that is NOTHING like the previous attempt."""
 # Event-driven goal message sending - schedules one-time jobs for specific send times
 async def send_goal_message_at_time(message_id: str):
     """Send a specific goal message (called by scheduled job at send time)"""
+    logger.info(f"🕐 Goal message job triggered for message_id: {message_id}")
     try:
         # Get the message
         msg = await db.goal_messages.find_one({"id": message_id})
         if not msg:
-            logger.warning(f"Goal message {message_id} not found")
+            logger.warning(f"❌ Goal message {message_id} not found in database")
             return
+        
+        logger.info(f"📧 Processing goal message {message_id} for goal {msg.get('goal_id')}, user {msg.get('user_email')}, status: {msg.get('status')}")
         
         # Check if already sent or skipped
         if msg.get("status") != "pending":
-            logger.info(f"Goal message {message_id} already processed (status: {msg.get('status')})")
+            logger.info(f"⏭️ Goal message {message_id} already processed (status: {msg.get('status')}), skipping")
             return
         
         goal_id = msg["goal_id"]
         user_email = msg["user_email"]
         
+        logger.info(f"📋 Fetching goal {goal_id} and user {user_email} data")
+        
         # Get goal and user data
         goal = await db.goals.find_one({"id": goal_id}, {"_id": 0})
-        if not goal or not goal.get("active"):
+        if not goal:
+            logger.error(f"❌ Goal {goal_id} not found for message {message_id}")
+            await db.goal_messages.update_one(
+                {"id": message_id},
+                {"$set": {"status": "failed", "error_message": "Goal not found"}}
+            )
+            return
+        if not goal.get("active"):
+            logger.warning(f"⏭️ Goal {goal_id} is inactive, skipping message {message_id}")
             await db.goal_messages.update_one(
                 {"id": message_id},
                 {"$set": {"status": "skipped", "error_message": "Goal inactive"}}
@@ -4885,7 +5125,15 @@ async def send_goal_message_at_time(message_id: str):
             return
         
         user = await db.users.find_one({"email": user_email}, {"_id": 0})
-        if not user or not user.get("active"):
+        if not user:
+            logger.error(f"❌ User {user_email} not found for message {message_id}")
+            await db.goal_messages.update_one(
+                {"id": message_id},
+                {"$set": {"status": "failed", "error_message": "User not found"}}
+            )
+            return
+        if not user.get("active"):
+            logger.warning(f"⏭️ User {user_email} is inactive, skipping message {message_id}")
             await db.goal_messages.update_one(
                 {"id": message_id},
                 {"$set": {"status": "skipped", "error_message": "User inactive"}}
@@ -4894,11 +5142,14 @@ async def send_goal_message_at_time(message_id: str):
         
         # Check unsubscribe
         if user.get("unsubscribed"):
+            logger.warning(f"⏭️ User {user_email} is unsubscribed, skipping message {message_id}")
             await db.goal_messages.update_one(
                 {"id": message_id},
                 {"$set": {"status": "skipped", "error_message": "User unsubscribed"}}
             )
             return
+        
+        logger.info(f"✅ Goal and user checks passed, proceeding with email generation for {user_email}")
         
         # Check rate limits
         today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -5371,36 +5622,104 @@ async def schedule_goal_jobs_for_goal(goal_id: str, user_email: str):
             next_times = await calculate_next_send_times(schedule, goal_id, user_email, lookahead_days=7)
             
             for send_time in next_times:
-                # Check if message already exists
-                existing = await db.goal_messages.find_one({
-                    "goal_id": goal_id,
-                    "scheduled_for": send_time,
-                    "status": {"$in": ["pending", "sent"]}
-                })
+                # Convert send_time to ISO string for database storage
+                send_time_iso = send_time.isoformat() if isinstance(send_time, datetime) else send_time
                 
-                if not existing:
+                # Check if message already exists for this exact time
+                # Compare by converting both to ISO strings for reliable comparison
+                existing_messages = await db.goal_messages.find({
+                    "goal_id": goal_id,
+                    "status": {"$in": ["pending", "sent"]}
+                }).to_list(100)
+                
+                # Check if we already have a message for this time (within 1 minute tolerance)
+                is_duplicate = False
+                for existing_msg in existing_messages:
+                    existing_scheduled = existing_msg.get("scheduled_for")
+                    if existing_scheduled:
+                        # Normalize to datetime for comparison
+                        if isinstance(existing_scheduled, str):
+                            try:
+                                existing_dt = datetime.fromisoformat(existing_scheduled.replace('Z', '+00:00'))
+                            except:
+                                try:
+                                    existing_dt = datetime.fromisoformat(existing_scheduled)
+                                except:
+                                    continue
+                        elif isinstance(existing_scheduled, datetime):
+                            existing_dt = existing_scheduled
+                        else:
+                            continue
+                        
+                        # Ensure timezone aware
+                        if existing_dt.tzinfo is None:
+                            existing_dt = existing_dt.replace(tzinfo=timezone.utc)
+                        
+                        # Check if times are within 1 minute of each other (same send time)
+                        time_diff = abs((send_time - existing_dt).total_seconds())
+                        if time_diff < 60:  # Same time (within 1 minute)
+                            logger.debug(f"⏭️ Skipping duplicate send time for goal {goal_id}: {send_time_iso} (existing: {existing_scheduled})")
+                            is_duplicate = True
+                            break
+                
+                if not is_duplicate:
                     # Create message record
                     message_id = str(uuid.uuid4())
                     message_doc = {
                         "id": message_id,
                         "goal_id": goal_id,
                         "user_email": user_email,
-                        "scheduled_for": send_time,
-                        "schedule_name": schedule_name,  # NEW: Track which schedule
-                        "schedule_id": schedule_id,  # NEW: Link to schedule
+                        "scheduled_for": send_time_iso,  # Store as ISO string for consistency
+                        "schedule_name": schedule_name,
+                        "schedule_id": schedule_id,
                         "status": "pending",
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
                     await db.goal_messages.insert_one(message_doc)
                     
-                    # Schedule the job
+                    # Schedule the job with APScheduler
                     job_id = f"goal_msg_{message_id}"
-                    scheduler.add_job(
-                        send_goal_message_at_time,
-                        DateTrigger(run_date=send_time),
+                    try:
+                        # Ensure scheduler is running
+                        if not scheduler.running:
+                            logger.warning("⚠️ Scheduler not running! Starting scheduler...")
+                            scheduler.start()
+                        
+                        # Check if send_time is in the past (shouldn't happen, but safety check)
+                        now_utc = datetime.now(timezone.utc)
+                        if send_time <= now_utc:
+                            logger.warning(f"⚠️ Send time {send_time.isoformat()} is in the past (now: {now_utc.isoformat()}), skipping job creation")
+                            await db.goal_messages.update_one(
+                                {"id": message_id},
+                                {"$set": {
+                                    "status": "failed",
+                                    "error_message": f"Send time {send_time.isoformat()} is in the past"
+                                }}
+                            )
+                            continue
+                        
+                        # Add job to scheduler
+                        scheduler.add_job(
+                            send_goal_message_at_time,
+                            DateTrigger(run_date=send_time),
                             args=[message_id],
                             id=job_id,
                             replace_existing=True
+                        )
+                        total_jobs_created += 1
+                        
+                        # Calculate time until send
+                        time_until_send = send_time - now_utc
+                        logger.info(f"✅ Scheduled job {job_id} for goal {goal_id} at {send_time.isoformat()} (UTC) - in {time_until_send.total_seconds() / 60:.1f} minutes")
+                    except Exception as job_error:
+                        logger.error(f"❌ Failed to schedule job {job_id} for {send_time.isoformat()}: {job_error}", exc_info=True)
+                        # Mark message as failed
+                        await db.goal_messages.update_one(
+                            {"id": message_id},
+                            {"$set": {
+                                "status": "failed",
+                                "error_message": f"Failed to schedule job: {str(job_error)}"
+                            }}
                         )
         
         logger.info(f"✅ Scheduled {total_jobs_created} jobs for goal {goal_id} ({len(goal.get('schedules', []))} schedules)")
@@ -5463,12 +5782,25 @@ async def calculate_next_send_times(schedule: dict, goal_id: str, user_email: st
                 
                 # Create datetime for each time in the times list
                 for time_str in times_list:
-                    hour, minute = map(int, time_str.split(":"))
-                    local_dt = tz.localize(datetime.combine(check_date, datetime.min.time().replace(hour=hour, minute=minute)))
-                    utc_dt = local_dt.astimezone(timezone.utc)
-                    
-                    if utc_dt > now:
-                        next_times.append(utc_dt)
+                    try:
+                        # Parse time string (format: "HH:MM")
+                        if ":" not in time_str:
+                            logger.warning(f"⚠️ Invalid time format for goal {goal_id}: {time_str}, skipping")
+                            continue
+                        hour, minute = map(int, time_str.split(":"))
+                        if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+                            logger.warning(f"⚠️ Invalid time values for goal {goal_id}: {time_str}, skipping")
+                            continue
+                        
+                        local_dt = tz.localize(datetime.combine(check_date, datetime.min.time().replace(hour=hour, minute=minute)))
+                        utc_dt = local_dt.astimezone(timezone.utc)
+                        
+                        if utc_dt > now:
+                            next_times.append(utc_dt)
+                            logger.debug(f"📅 Calculated send time for goal {goal_id}: {utc_dt.isoformat()} (UTC) = {local_dt.isoformat()} (local {schedule.get('timezone')})")
+                    except Exception as time_error:
+                        logger.error(f"❌ Error parsing time {time_str} for goal {goal_id}: {time_error}")
+                        continue
         
         elif schedule_type == "weekly":
             weekdays = schedule.get("weekdays", [0])  # Default to Monday
@@ -5685,8 +6017,11 @@ async def update_goal(email: str, goal_id: str, request: GoalUpdateRequest):
                     except:
                         pass
     # If schedules were updated or goal reactivated, reschedule jobs
-    elif request.schedules is not None or (request.active is True and not goal.get("active", False)):
+    # ALWAYS reschedule if schedules are provided (even if they look the same, times might have changed)
+    if request.schedules is not None or (request.active is True and not goal.get("active", False)):
+        logger.info(f"🔄 Rescheduling jobs for goal {goal_id} (schedules updated or goal reactivated)")
         # Remove old jobs
+        removed_count = 0
         for job in scheduler.get_jobs():
             if job.id.startswith(f"goal_msg_") and len(job.args) > 0:
                 message_id = job.args[0]
@@ -5694,13 +6029,21 @@ async def update_goal(email: str, goal_id: str, request: GoalUpdateRequest):
                 if msg and msg.get("goal_id") == goal_id:
                     try:
                         scheduler.remove_job(job.id)
-                    except:
-                        pass
+                        removed_count += 1
+                        logger.debug(f"🗑️ Removed old job {job.id} for goal {goal_id}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to remove job {job.id}: {e}")
+        logger.info(f"🗑️ Removed {removed_count} old jobs for goal {goal_id}")
+        
         # Cancel old pending messages
-        await db.goal_messages.delete_many({"goal_id": goal_id, "status": "pending"})
+        delete_result = await db.goal_messages.delete_many({"goal_id": goal_id, "status": "pending"})
+        logger.info(f"🗑️ Deleted {delete_result.deleted_count} old pending messages for goal {goal_id}")
+        
         # Schedule new jobs (event-driven)
         if update_data.get("active", goal.get("active", True)):
+            logger.info(f"📅 Scheduling new jobs for goal {goal_id}")
             await schedule_goal_jobs_for_goal(goal_id, email)
+            logger.info(f"✅ Completed rescheduling for goal {goal_id}")
     
     return {"status": "success"}
 
@@ -6891,22 +7234,198 @@ async def get_user_journey(email: str, admin_token: str):
 
 # Schedule Management Routes
 @api_router.post("/users/{email}/schedule/pause")
-async def pause_schedule(email: str):
+@limiter.limit("10/minute")  # Rate limit: 10 pause/resume actions per minute per IP
+async def pause_schedule(email: str, request: Request):
     """Pause user's email schedule"""
-    await db.users.update_one(
-        {"email": email},
-        {"$set": {"schedule.paused": True}}
-    )
-    return {"status": "success", "message": "Schedule paused"}
+    start_time = time.time()
+    
+    # Validate email
+    email_valid, email_error = validate_email(email)
+    if not email_valid:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "validation_error",
+                "message": email_error,
+                "field": "email",
+                "code": "INVALID_EMAIL"
+            }
+        )
+    
+    # Check if user exists
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "not_found",
+                "message": "User not found",
+                "code": "USER_NOT_FOUND"
+            }
+        )
+    
+    try:
+        # Atomic update
+        result = await db.users.update_one(
+            {"email": email},
+            {"$set": {"schedule.paused": True}}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "update_failed",
+                    "message": "User not found during update",
+                    "code": "UPDATE_FAILED"
+                }
+            )
+        
+        # Log activity
+        await tracker.log_user_activity(
+            action_type="schedule_paused",
+            user_email=email,
+            details={"paused_at": datetime.now(timezone.utc).isoformat()},
+            ip_address=request.client.host if request.client else None
+        )
+        
+        # Log API call
+        response_time = (time.time() - start_time) * 1000
+        await tracker.log_api_call(
+            endpoint=f"/users/{email}/schedule/pause",
+            method="POST",
+            status_code=200,
+            response_time_ms=int(response_time),
+            user_email=email,
+            ip_address=request.client.host if request.client else None
+        )
+        
+        logger.info(f"✅ Schedule paused for {email}")
+        return {
+            "status": "success",
+            "message": "Schedule paused",
+            "code": "SCHEDULE_PAUSED"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error pausing schedule for {email}: {str(e)}", exc_info=True)
+        # Log error
+        response_time = (time.time() - start_time) * 1000
+        await tracker.log_api_call(
+            endpoint=f"/users/{email}/schedule/pause",
+            method="POST",
+            status_code=500,
+            response_time_ms=int(response_time),
+            user_email=email,
+            ip_address=request.client.host if request.client else None,
+            error_message=str(e)
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "internal_error",
+                "message": "Failed to pause schedule. Please try again.",
+                "code": "PAUSE_FAILED"
+            }
+        )
 
 @api_router.post("/users/{email}/schedule/resume")
-async def resume_schedule(email: str):
+@limiter.limit("10/minute")  # Rate limit: 10 pause/resume actions per minute per IP
+async def resume_schedule(email: str, request: Request):
     """Resume user's email schedule"""
-    await db.users.update_one(
-        {"email": email},
-        {"$set": {"schedule.paused": False}}
-    )
-    return {"status": "success", "message": "Schedule resumed"}
+    start_time = time.time()
+    
+    # Validate email
+    email_valid, email_error = validate_email(email)
+    if not email_valid:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "validation_error",
+                "message": email_error,
+                "field": "email",
+                "code": "INVALID_EMAIL"
+            }
+        )
+    
+    # Check if user exists
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "not_found",
+                "message": "User not found",
+                "code": "USER_NOT_FOUND"
+            }
+        )
+    
+    try:
+        # Atomic update
+        result = await db.users.update_one(
+            {"email": email},
+            {"$set": {"schedule.paused": False}}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "update_failed",
+                    "message": "User not found during update",
+                    "code": "UPDATE_FAILED"
+                }
+            )
+        
+        # Log activity
+        await tracker.log_user_activity(
+            action_type="schedule_resumed",
+            user_email=email,
+            details={"resumed_at": datetime.now(timezone.utc).isoformat()},
+            ip_address=request.client.host if request.client else None
+        )
+        
+        # Log API call
+        response_time = (time.time() - start_time) * 1000
+        await tracker.log_api_call(
+            endpoint=f"/users/{email}/schedule/resume",
+            method="POST",
+            status_code=200,
+            response_time_ms=int(response_time),
+            user_email=email,
+            ip_address=request.client.host if request.client else None
+        )
+        
+        logger.info(f"✅ Schedule resumed for {email}")
+        return {
+            "status": "success",
+            "message": "Schedule resumed",
+            "code": "SCHEDULE_RESUMED"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error resuming schedule for {email}: {str(e)}", exc_info=True)
+        # Log error
+        response_time = (time.time() - start_time) * 1000
+        await tracker.log_api_call(
+            endpoint=f"/users/{email}/schedule/resume",
+            method="POST",
+            status_code=500,
+            response_time_ms=int(response_time),
+            user_email=email,
+            ip_address=request.client.host if request.client else None,
+            error_message=str(e)
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "internal_error",
+                "message": "Failed to resume schedule. Please try again.",
+                "code": "RESUME_FAILED"
+            }
+        )
 
 @api_router.post("/users/{email}/schedule/skip-next")
 async def skip_next_email(email: str):
@@ -9818,10 +10337,21 @@ async def lifespan(app: FastAPI):
         
         # Start scheduler if not already running
         if not scheduler.running:
-            scheduler.start()
-            logger.info("Scheduler started")
+            try:
+                scheduler.start()
+                logger.info("✅ Scheduler started successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to start scheduler: {e}", exc_info=True)
+                raise
         else:
-            logger.info("Scheduler already running")
+            logger.info("✅ Scheduler already running")
+        
+        # Verify scheduler is actually running
+        if scheduler.running:
+            job_count = len(scheduler.get_jobs())
+            logger.info(f"✅ Scheduler confirmed running - {job_count} jobs currently scheduled")
+        else:
+            logger.error("❌ CRITICAL: Scheduler is NOT running after startup!")
 
         await schedule_user_emails()
         logger.info("✅ User email schedules initialized")

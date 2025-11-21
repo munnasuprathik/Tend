@@ -262,37 +262,60 @@ def render_email_html(
     """
 
 
-def fallback_subject_line(streak: int, goals: str) -> str:
-    """Deterministic fallback subject when the LLM is unavailable."""
-    options = [
-        "Fresh spark for your next win",
-        "Your momentum note for today",
-        "A quick ignition for progress",
-        "Plan the move before the day ends",
-        "Clear the runway and launch",
-    ]
+async def fallback_subject_line(streak: int, goals: str, personality=None) -> str:
+    """Dynamic fallback subject generation when LLM is unavailable - uses AI to generate, not hardcoded."""
+    try:
+        # Try to generate dynamically even in fallback mode
+        from backend.config import openai_client
+        goal_theme = derive_goal_theme(goals) if goals else None
+        
+        personality_context = ""
+        if personality:
+            if personality.type == "famous":
+                personality_context = f"Style hint: {personality.value} would write direct, {personality.value}-style subjects"
+            elif personality.type == "tone":
+                personality_context = f"Tone: {personality.value}"
+            elif personality.type == "custom":
+                personality_context = f"Custom style: {personality.value[:50]}"
+        
+        fallback_prompt = f"""Generate a simple, human email subject line.
 
+Context:
+- Streak: {streak} days
+- Goal theme: {goal_theme or "general motivation"}
+{personality_context}
+
+Requirements:
+- Under 60 characters
+- Human and personal
+- No cliches
+- Simple and direct
+- Unique and fresh
+
+Return only the subject line, no quotes."""
+        
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You write simple, human email subject lines. Return only the subject line."},
+                {"role": "user", "content": fallback_prompt}
+            ],
+            temperature=0.8,
+            max_tokens=30,
+            timeout=5  # Quick timeout for fallback
+        )
+        
+        subject = response.choices[0].message.content.strip().strip('"\'')
+        if subject and len(subject) <= 60:
+            return subject
+    except Exception:
+        pass  # Fall through to minimal fallback
+    
+    # Ultimate minimal fallback - dynamic based on context
     if streak > 0:
-        options.extend(
-            [
-                f"Day {streak} and climbing higher",
-                f"{streak} days in - keep the cadence",
-                f"{streak} mornings of moving forward",
-            ]
-        )
-
-    goal_theme = derive_goal_theme(goals)
-    if goal_theme:
-        options.extend(
-            [
-                f"Shape the next move on {goal_theme}",
-                f"Sketch the blueprint for {goal_theme}",
-                "Sharpen the idea before it sleeps",
-                "Draft the next chapter of the vision",
-            ]
-        )
-
-    return secrets.choice(options)[:60]
+        return f"Day {streak} update"
+    else:
+        return "Your daily motivation"
 
 
 def derive_goal_theme(goals: str) -> str:

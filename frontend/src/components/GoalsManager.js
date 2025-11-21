@@ -86,7 +86,7 @@ export const GoalsManager = forwardRef(function GoalsManager({ user, onUpdate },
 
   const fetchGoals = useCallback(async () => {
     try {
-      const response = await axios.get(`${API}/users/${user.email}/goals`);
+      const response = await axios.get(`${API}/users/${encodeURIComponent(user.email)}/goals`);
       setGoals(response.data.goals || []);
     } catch (error) {
       console.error("Failed to fetch goals:", error);
@@ -463,7 +463,7 @@ export const GoalsManager = forwardRef(function GoalsManager({ user, onUpdate },
           }
           
           try {
-            await axios.put(`${API}/users/${user.email}`, userUpdatePayload);
+            await axios.put(`${API}/users/${encodeURIComponent(user.email)}`, userUpdatePayload);
             showNotification({ type: 'success', message: "Your main goal has been updated successfully. Keep pushing forward!", title: "Primary Goal Updated" });
             toast.success("Primary Goal Updated!", {
               description: "Your main goal has been updated successfully. Keep pushing forward!",
@@ -484,7 +484,7 @@ export const GoalsManager = forwardRef(function GoalsManager({ user, onUpdate },
             // Refresh user data after update
             if (onUpdate) {
               try {
-                const userResponse = await axios.get(`${API}/users/${user.email}`);
+                const userResponse = await axios.get(`${API}/users/${encodeURIComponent(user.email)}`);
                 onUpdate(userResponse.data);
               } catch (error) {
                 console.error("Failed to refresh user data:", error);
@@ -492,8 +492,23 @@ export const GoalsManager = forwardRef(function GoalsManager({ user, onUpdate },
             }
           } catch (error) {
             console.error("Failed to update primary goal:", error);
-            showNotification({ type: 'error', message: error.response?.data?.detail || "Failed to update primary goal", title: "Error" });
-            toast.error(error.response?.data?.detail || "Failed to update primary goal");
+            // Extract error message from backend response
+            let errorMessage = "Failed to update primary goal";
+            if (error.response?.data) {
+              const errorData = error.response.data;
+              // Handle structured error response
+              if (typeof errorData.detail === 'object' && errorData.detail?.message) {
+                errorMessage = errorData.detail.message;
+              } else if (typeof errorData.detail === 'string') {
+                errorMessage = errorData.detail;
+              } else if (errorData.message) {
+                errorMessage = errorData.message;
+              }
+            } else if (error.message) {
+              errorMessage = error.message;
+            }
+            showNotification({ type: 'error', message: errorMessage, title: "Error" });
+            toast.error(errorMessage);
             setLoading(false);
             return; // Exit early on error
           }
@@ -504,7 +519,7 @@ export const GoalsManager = forwardRef(function GoalsManager({ user, onUpdate },
           setLoading(false);
           return; // Exit early after main goal update
         } else {
-          await axios.put(`${API}/users/${user.email}/goals/${editingGoal.id}`, payload);
+          await axios.put(`${API}/users/${encodeURIComponent(user.email)}/goals/${editingGoal.id}`, payload);
           showNotification({ type: 'success', message: "Your goal has been updated. You're one step closer to success!", title: "Goal Updated" });
           toast.success("Goal Updated!", {
             description: "Your goal has been updated. You're one step closer to success!",
@@ -523,7 +538,7 @@ export const GoalsManager = forwardRef(function GoalsManager({ user, onUpdate },
           }
         }
       } else {
-        await axios.post(`${API}/users/${user.email}/goals`, payload);
+        await axios.post(`${API}/users/${encodeURIComponent(user.email)}/goals`, payload);
         showNotification({ type: 'success', message: "Congratulations! Your new goal has been added. Let's make it happen!", title: "New Goal Created" });
         toast.success("New Goal Created!", {
           description: "Congratulations! Your new goal has been added. Let's make it happen!",
@@ -563,8 +578,23 @@ export const GoalsManager = forwardRef(function GoalsManager({ user, onUpdate },
         }
       }
     } catch (error) {
-      showNotification({ type: 'error', message: error.response?.data?.detail || "Failed to save goal", title: "Error" });
-      toast.error(error.response?.data?.detail || "Failed to save goal");
+      // Extract error message from backend response
+      let errorMessage = "Failed to save goal";
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        // Handle structured error response
+        if (typeof errorData.detail === 'object' && errorData.detail?.message) {
+          errorMessage = errorData.detail.message;
+        } else if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      showNotification({ type: 'error', message: errorMessage, title: "Error" });
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -584,7 +614,7 @@ export const GoalsManager = forwardRef(function GoalsManager({ user, onUpdate },
     try {
       if (isPrimaryGoal) {
         // For primary goal, clear user's goals field
-        await axios.put(`${API}/users/${user.email}`, {
+        await axios.put(`${API}/users/${encodeURIComponent(user.email)}`, {
           goals: "",
           schedule: null
         });
@@ -595,7 +625,7 @@ export const GoalsManager = forwardRef(function GoalsManager({ user, onUpdate },
         });
       } else {
         // For regular goals, use the delete endpoint
-        await axios.delete(`${API}/users/${user.email}/goals/${goalId}`);
+        await axios.delete(`${API}/users/${encodeURIComponent(user.email)}/goals/${goalId}`);
         showNotification({ type: 'success', message: "Goal has been deleted", title: "Goal Deleted" });
         toast.success("Goal Deleted", {
           description: "The goal has been removed. You can always create a new one!",
@@ -631,7 +661,7 @@ export const GoalsManager = forwardRef(function GoalsManager({ user, onUpdate },
       if (isPrimaryGoal) {
         // For primary goal, update user's schedule paused status
         const currentSchedule = user.schedule || {};
-        await axios.put(`${API}/users/${user.email}`, {
+        await axios.put(`${API}/users/${encodeURIComponent(user.email)}`, {
           schedule: {
             ...currentSchedule,
             paused: goal.active // If currently active, pause it; if paused, activate it
@@ -639,7 +669,7 @@ export const GoalsManager = forwardRef(function GoalsManager({ user, onUpdate },
         });
       } else {
         // For regular goals, use the goals endpoint
-        await axios.put(`${API}/users/${user.email}/goals/${goal.id}`, {
+        await axios.put(`${API}/users/${encodeURIComponent(user.email)}/goals/${goal.id}`, {
           active: !goal.active
         });
       }
@@ -686,7 +716,7 @@ export const GoalsManager = forwardRef(function GoalsManager({ user, onUpdate },
     setSelectedGoalHistory(goal);
     setHistoryLoading(true);
     try {
-      const response = await axios.get(`${API}/users/${user.email}/goals/${goal.id}/history`);
+      const response = await axios.get(`${API}/users/${encodeURIComponent(user.email)}/goals/${goal.id}/history`);
       setGoalHistory(response.data.messages || []);
     } catch (error) {
       showNotification({ type: 'error', message: "Failed to load goal history", title: "Error" });

@@ -46,6 +46,8 @@ import {
 import { safeSelectValue, safePersonalityValue } from "@/utils/safeRender";
 import { sanitizeUser, sanitizeMessages, sanitizeFilter } from "@/utils/dataSanitizer";
 import { cn } from "@/lib/utils";
+import { debounce } from "@/utils/debounce";
+import { validateName, validateEmail, validateTimezone } from "@/utils/validation";
 
 // IST timezone constant for admin dashboard
 const ADMIN_TIMEZONE = "Asia/Kolkata";
@@ -916,6 +918,8 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
   const [goalsRefreshKey, setGoalsRefreshKey] = useState(0);
   const goalsManagerRef = useRef(null);
   const [pauseResumeLoading, setPauseResumeLoading] = useState(false);
+  const [lastPauseState, setLastPauseState] = useState(null); // For optimistic updates
+  const [validationErrors, setValidationErrors] = useState({ name: null, timezone: null });
 
   const userTimezone = user.user_timezone || "UTC";
   const userScheduleTimeLabel = formatScheduleTime(
@@ -941,8 +945,19 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
   }, [onUserUpdate]);
 
   const refreshUserData = useCallback(async (incrementRefreshKey = false) => {
+    // Check network status before making request
+    if (!navigator.onLine) {
+      if (incrementRefreshKey) {
+        toast.error("You're offline. Please check your connection.");
+      }
+      return;
+    }
+
     try {
-      const response = await axios.get(`${API}/users/${user.email}`);
+      const encodedEmail = encodeURIComponent(user.email);
+      const response = await axios.get(`${API}/users/${encodedEmail}`, {
+        timeout: 10000, // 10 second timeout
+      });
       // Sanitize response data before updating
       const sanitizedUser = sanitizeUser(response.data);
       if (sanitizedUser) {
@@ -954,35 +969,123 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
       }
     } catch (error) {
       console.error("Failed to refresh user data:", error);
+      // Enhanced error handling
+      if (incrementRefreshKey) {
+        let errorMessage = "Failed to refresh data. Please try again.";
+        if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+          errorMessage = "Request timed out. Please check your connection.";
+        } else if (error.message === 'Network Error' || error.code === 'ERR_NETWORK') {
+          errorMessage = "Cannot connect to the server. Please check your connection.";
+        }
+        toast.error(errorMessage);
+      }
     }
   }, [user.email, handleUserStateUpdate]);
 
-  const handlePauseResume = useCallback(async () => {
+  const handlePauseResumeInternal = useCallback(async () => {
     if (pauseResumeLoading) return; // Prevent double-clicks
+    
+    // Check network status
+    if (!navigator.onLine) {
+      toast.error("You're offline. Please check your connection and try again.", {
+        action: {
+          label: "Retry",
+          onClick: () => {
+            if (navigator.onLine) {
+              handlePauseResumeInternal();
+            } else {
+              toast.error("Still offline. Please check your connection.");
+            }
+          }
+        }
+      });
+      return;
+    }
+    
+    // Optimistic update: Update UI immediately
+    const currentPausedState = user.schedule?.paused;
+    const newPausedState = !currentPausedState;
+    setLastPauseState(currentPausedState); // Store original state for rollback
+    
+    // Optimistically update user state
+    const optimisticUser = {
+      ...user,
+      schedule: {
+        ...user.schedule,
+        paused: newPausedState
+      }
+    };
+    handleUserStateUpdate(optimisticUser);
     
     setPauseResumeLoading(true);
     try {
-      const isPaused = user.schedule?.paused;
-      const endpoint = isPaused 
-        ? `${API}/users/${user.email}/schedule/resume`
-        : `${API}/users/${user.email}/schedule/pause`;
+      const encodedEmail = encodeURIComponent(user.email);
+      const endpoint = currentPausedState 
+        ? `${API}/users/${encodedEmail}/schedule/resume`
+        : `${API}/users/${encodedEmail}/schedule/pause`;
       
-      await axios.post(endpoint);
-      toast.success(isPaused ? "Schedule resumed!" : "Schedule paused!");
+      await axios.post(endpoint, {}, {
+        timeout: 10000, // 10 second timeout
+      });
+      toast.success(currentPausedState ? "Schedule resumed!" : "Schedule paused!");
       
-      // Refresh user data to update the widget
+      // Refresh user data to sync with server
       await refreshUserData(true);
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to update schedule");
+      // Rollback optimistic update on error
+      // Use currentPausedState (the original state before optimistic update) for rollback
+      const rollbackUser = {
+        ...user,
+        schedule: {
+          ...user.schedule,
+          paused: currentPausedState // Rollback to original state
+        }
+      };
+      handleUserStateUpdate(rollbackUser);
+      
+      // Enhanced error handling with retry button
+      let errorMessage = "Failed to update schedule";
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        errorMessage = "Request timed out. Please check your connection and try again.";
+      } else if (error.message === 'Network Error' || error.code === 'ERR_NETWORK') {
+        errorMessage = "Cannot connect to the server. Please check your connection.";
+      } else if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      
+      toast.error(errorMessage, {
+        duration: 5000,
+        action: {
+          label: "Retry",
+          onClick: () => handlePauseResumeInternal()
+        }
+      });
     } finally {
       setPauseResumeLoading(false);
+      setLastPauseState(null);
     }
-  }, [user.email, user.schedule?.paused, refreshUserData, pauseResumeLoading]);
+  }, [user, refreshUserData, pauseResumeLoading, handleUserStateUpdate]);
+
+  // Debounced version to prevent rapid clicks (300ms debounce)
+  const handlePauseResume = useMemo(
+    () => debounce(handlePauseResumeInternal, 300),
+    [handlePauseResumeInternal]
+  );
 
   // Fetch message history for calendar
   const fetchMessageHistory = useCallback(async () => {
+    // Skip if offline (will retry when online)
+    if (!navigator.onLine) {
+      return;
+    }
+
     try {
-      const response = await axios.get(`${API}/users/${user.email}/message-history?limit=500`);
+      const encodedEmail = encodeURIComponent(user.email);
+      const response = await axios.get(`${API}/users/${encodedEmail}/message-history?limit=500`, {
+        timeout: 10000, // 10 second timeout
+      });
       const sorted = [...(response.data.messages || [])].sort(
         (a, b) => new Date(b.sent_at || b.created_at) - new Date(a.sent_at || a.created_at),
       );
@@ -990,6 +1093,15 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
     } catch (error) {
       console.error("Failed to load message history for calendar:", error);
       setMessageHistory([]);
+      // Only show error if it's a network issue, not for silent refreshes
+      if (error.message === 'Network Error' || error.code === 'ERR_NETWORK') {
+        toast.error("Failed to load message history. Please check your connection.", {
+          action: {
+            label: "Retry",
+            onClick: () => fetchMessageHistory()
+          }
+        });
+      }
     }
   }, [user.email]);
 
@@ -1000,9 +1112,18 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
 
   // Fetch goals for overview
   const fetchGoals = useCallback(async () => {
+    // Skip if offline (will retry when online)
+    if (!navigator.onLine) {
+      setGoalsLoading(false);
+      return;
+    }
+
     setGoalsLoading(true);
     try {
-      const response = await axios.get(`${API}/users/${user.email}/goals`);
+      const encodedEmail = encodeURIComponent(user.email);
+      const response = await axios.get(`${API}/users/${encodedEmail}/goals`, {
+        timeout: 10000, // 10 second timeout
+      });
       setGoals(response.data.goals || []);
     } catch (error) {
       console.error("Failed to fetch goals:", error);
@@ -1016,11 +1137,68 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
     fetchGoals();
   }, [fetchGoals, refreshKey, goalsRefreshKey]);
 
+  // Real-time validation
+  const validateFormField = useCallback((field, value) => {
+    let validation = null;
+    switch (field) {
+      case 'name':
+        validation = validateName(value);
+        break;
+      case 'timezone':
+        validation = validateTimezone(value);
+        break;
+      default:
+        // Return true for unknown fields to avoid breaking validation
+        return true;
+    }
+    
+    // Only update validation errors if validation was performed
+    if (validation) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [field]: validation.error
+      }));
+      
+      return validation.valid;
+    }
+    
+    return true;
+  }, []);
+
   const handleUpdate = async () => {
+    // Clear previous validation errors
+    setValidationErrors({ name: null, timezone: null });
+    
+    // Validate all fields
+    const nameValid = validateFormField('name', formData.name);
+    const timezoneValid = validateFormField('timezone', formData.user_timezone);
+    
+    if (!nameValid || !timezoneValid) {
+      toast.error("Please fix the errors in the form");
+      return;
+    }
+
+    // Check network status
+    if (!navigator.onLine) {
+      toast.error("You're offline. Please check your connection and try again.", {
+        action: {
+          label: "Retry",
+          onClick: () => {
+            if (navigator.onLine) {
+              handleUpdate();
+            } else {
+              toast.error("Still offline. Please check your connection.");
+            }
+          }
+        }
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const updates = {
-        name: formData.name,
+        name: formData.name.trim(),
         active: formData.active,
         user_timezone: formData.user_timezone,  // Update single timezone
         schedule: {
@@ -1029,13 +1207,17 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
         }
       };
 
-      const response = await axios.put(`${API}/users/${user.email}`, updates);
+      const encodedEmail = encodeURIComponent(user.email);
+      const response = await axios.put(`${API}/users/${encodedEmail}`, updates, {
+        timeout: 15000, // 15 second timeout for updates
+      });
       // Sanitize response data before updating
       const sanitizedUser = sanitizeUser(response.data);
       if (sanitizedUser) {
         handleUserStateUpdate(sanitizedUser);
       }
       setEditMode(false);
+      setValidationErrors({ name: null, timezone: null }); // Clear errors on success
       showNotification({ type: 'success', message: "Settings Updated!", title: "Success" });
       toast.success("Settings Updated!", {
         description: "Your preferences have been saved successfully!",
@@ -1051,8 +1233,19 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
         });
       }, 500);
     } catch (error) {
-      showNotification({ type: 'error', message: "Failed to update settings", title: "Error" });
-      toast.error("Failed to update settings");
+      const errorMessage = error.response?.data?.detail || 
+                           error.response?.data?.message || 
+                           error.message || 
+                           "Failed to update settings";
+      showNotification({ type: 'error', message: errorMessage, title: "Error" });
+      toast.error(errorMessage, {
+        description: "Please check your input and try again.",
+        duration: 5000,
+        action: {
+          label: "Retry",
+          onClick: () => handleUpdate()
+        }
+      });
     } finally {
       setLoading(false);
     }
@@ -1146,13 +1339,25 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
       }
       
       showNotification({ type: 'error', message: errorMessage, title: "Error" });
-      toast.error(errorMessage, { duration: 5000 });
+      toast.error(errorMessage, { 
+        duration: 5000,
+        action: {
+          label: "Retry",
+          onClick: () => handleGeneratePreview()
+        }
+      });
     } finally {
       setLoading(false);
     }
   };
 
   const handleSendNow = async () => {
+    // Check network status
+    if (!navigator.onLine) {
+      toast.error("You're offline. Please check your connection and try again.");
+      return;
+    }
+
     setLoading(true);
     try {
       // URL encode email to handle special characters
@@ -1219,21 +1424,44 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
       }
       
       showNotification({ type: 'error', message: errorMessage, title: "Error" });
-      toast.error(errorMessage, { duration: 5000 });
+      toast.error(errorMessage, { 
+        duration: 5000,
+        action: {
+          label: "Retry",
+          onClick: () => handleSendNow()
+        }
+      });
     } finally {
       setLoading(false);
     }
   };
 
   const fetchAchievements = useCallback(async () => {
+    // Skip if offline (will retry when online)
+    if (!navigator.onLine) {
+      setAchievementsLoading(false);
+      return;
+    }
+
     setAchievementsLoading(true);
     try {
-      const response = await axios.get(`${API}/users/${user.email}/achievements`);
+      const encodedEmail = encodeURIComponent(user.email);
+      const response = await axios.get(`${API}/users/${encodedEmail}/achievements`, {
+        timeout: 10000, // 10 second timeout
+      });
       setAchievements(response.data);
     } catch (error) {
       console.error("Failed to fetch achievements:", error);
-      showNotification({ type: 'error', message: "Failed to load achievements", title: "Error" });
-      toast.error("Failed to load achievements");
+      const errorMessage = error.message === 'Network Error' || error.code === 'ERR_NETWORK'
+        ? "Cannot connect to the server. Please check your connection."
+        : "Failed to load achievements";
+      showNotification({ type: 'error', message: errorMessage, title: "Error" });
+      toast.error(errorMessage, {
+        action: error.message === 'Network Error' || error.code === 'ERR_NETWORK' ? {
+          label: "Retry",
+          onClick: () => fetchAchievements()
+        } : undefined
+      });
     } finally {
       setAchievementsLoading(false);
     }
@@ -1277,7 +1505,8 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
     
     // If still no details, fetch from API
     if (newAchievementDetails.length === 0) {
-      axios.get(`${API}/users/${user.email}/achievements`)
+      const encodedEmail = encodeURIComponent(user.email);
+      axios.get(`${API}/users/${encodedEmail}/achievements`)
         .then(response => {
           const allAchievements = [...(response.data.unlocked || []), ...(response.data.locked || [])];
           const details = allAchievements.filter(ach => 
@@ -1546,11 +1775,20 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
                   <Button 
                     size="sm" 
                     onClick={handleSendNow} 
-                    disabled={loading} 
+                    disabled={loading || !navigator.onLine} 
                     className="w-full justify-center gap-2 h-10 font-medium shadow-sm hover:shadow-md transition-all"
                   >
-                    <Send className="h-4 w-4" />
-                    Send Now
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4" />
+                        Send Now
+                      </>
+                    )}
                   </Button>
                   <Button 
                     size="sm" 
@@ -2200,10 +2438,27 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
                   <Label className="text-sm sm:text-base">Name</Label>
                   <Input
                     value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    onChange={(e) => {
+                      setFormData({...formData, name: e.target.value});
+                      // Real-time validation
+                      if (editMode) {
+                        validateFormField('name', e.target.value);
+                      }
+                    }}
+                    onBlur={() => {
+                      if (editMode) {
+                        validateFormField('name', formData.name);
+                      }
+                    }}
                     disabled={!editMode}
-                    className="mt-2"
+                    className={cn(
+                      "mt-2",
+                      validationErrors.name && "border-destructive focus-visible:ring-destructive"
+                    )}
                   />
+                  {validationErrors.name && (
+                    <p className="text-xs text-destructive mt-1">{validationErrors.name}</p>
+                  )}
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 pt-4 border-t">
@@ -2229,10 +2484,19 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
                   </p>
                   <Select 
                     value={safeSelectValue(formData.user_timezone || user.user_timezone || "UTC", "UTC")} 
-                    onValueChange={(value) => setFormData({...formData, user_timezone: value})}
+                    onValueChange={(value) => {
+                      setFormData({...formData, user_timezone: value});
+                      // Real-time validation
+                      if (editMode) {
+                        validateFormField('timezone', value);
+                      }
+                    }}
                     disabled={!editMode}
                   >
-                    <SelectTrigger className="mt-2">
+                    <SelectTrigger className={cn(
+                      "mt-2",
+                      validationErrors.timezone && "border-destructive focus-visible:ring-destructive"
+                    )}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="max-h-[300px]">
@@ -2243,15 +2507,46 @@ function DashboardScreen({ user, onLogout, onUserUpdate }) {
                       ))}
                     </SelectContent>
                   </Select>
+                  {validationErrors.timezone && (
+                    <p className="text-xs text-destructive mt-1">{validationErrors.timezone}</p>
+                  )}
                 </div>
 
                 {editMode && (
                   <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                    <Button variant="outline" onClick={() => setEditMode(false)} className="flex-1 sm:flex-initial">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        setEditMode(false);
+                        setValidationErrors({ name: null, timezone: null }); // Clear validation errors on cancel
+                        // Reset form data to original user data
+                        setFormData({
+                          name: typeof user.name === 'string' ? user.name : '',
+                          goals: typeof user.goals === 'string' ? user.goals : '',
+                          frequency: typeof user.schedule?.frequency === 'string' ? user.schedule.frequency : 'daily',
+                          time: user.schedule?.times?.[0] || (typeof user.schedule?.time === 'string' ? user.schedule.time : "09:00"),
+                          active: typeof user.active === 'boolean' ? user.active : false,
+                          user_timezone: user.user_timezone || "UTC"
+                        });
+                      }} 
+                      className="flex-1 sm:flex-initial"
+                    >
                       Cancel
                     </Button>
-                    <Button onClick={handleUpdate} disabled={loading} className="flex-1 sm:flex-initial" data-testid="save-settings-btn">
-                      {loading ? "Saving..." : "Save Changes"}
+                    <Button 
+                      onClick={handleUpdate} 
+                      disabled={loading || !!validationErrors.name || !!validationErrors.timezone} 
+                      className="flex-1 sm:flex-initial" 
+                      data-testid="save-settings-btn"
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save Changes"
+                      )}
                     </Button>
                   </div>
                 )}
